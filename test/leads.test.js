@@ -6,6 +6,11 @@ import path from 'node:path';
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'amnan-test-'));
 
+// tes aturan "platform": salin keywords.json dengan leadRule platform (bawaan produksi: all)
+const kw = JSON.parse(fs.readFileSync('config/keywords.json', 'utf8'));
+process.env.KEYWORDS_FILE = path.join(process.env.DATA_DIR, 'keywords.test.json');
+fs.writeFileSync(process.env.KEYWORDS_FILE, JSON.stringify({ ...kw, leadRule: 'platform' }));
+
 const { detect, ingest, qualifies, classify, hotMatches } = await import('../src/leads.js');
 const store = await import('../src/store.js');
 
@@ -138,5 +143,12 @@ assert.equal(classify({ ...c5.lead, dataTypeManual: true }, { text: 'booking lag
 // konfigurasi bisa ditimpa
 const cfg = { ...JSON.parse(fs.readFileSync('config/keywords.json', 'utf8')), warmAfterMessages: 1 };
 assert.equal(classify(c1.lead, { text: 'oke', ts: 2000, customerCount: 2 }, cfg).lead.status, 'Warm Leads');
+
+// bawaan produksi (leadRule all): pesan pertama tanpa keyword apa pun langsung Cold; bukan pesan pertama tetap tidak
+assert.equal(kw.leadRule, 'all');
+const al = classify(null, { text: 'Halo kak', phone: '9', ts: 1000, customerCount: 1 }, kw);
+assert.equal(al.lead.status, 'Cold Leads');
+assert.equal(al.lead.platform, 'Lainnya');
+assert.equal(classify(null, { text: 'Halo kak', ts: 1000, customerCount: 2 }, kw).ignored, true);
 
 console.log('Semua uji lolos');

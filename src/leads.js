@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as store from './store.js';
 
-const CONFIG_FILE = path.resolve('config/keywords.json');
+const CONFIG_FILE = process.env.KEYWORDS_FILE || path.resolve('config/keywords.json');
 
 // Semua nilai ini bisa ditimpa lewat config/keywords.json: hotKeywords, warmAfterMessages, transactionGapHours
 const DEFAULT_HOT = [

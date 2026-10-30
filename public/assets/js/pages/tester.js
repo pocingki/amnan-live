@@ -45,7 +45,7 @@ export async function mount(el) {
         <div class="flex flex-wrap gap-2 mt-3" id="t-actions"></div></div>
       <div class="card text-gray-600 space-y-2">
         <div class="font-semibold text-brand-800">Aturan yang diuji</div>
-        <p><b>Status Lead:</b> Cold = pesan masuk pertama kali dari nomor ini (sama dengan pesan pembuka bot) dan memuat keyword platform. Warm = percakapan lebih dari 10 pesan customer. Hot = ada booking/transfer/pembayaran dst (daftar di keywords.json), atau sudah Existing.</p>
+        <p><b>Status Lead:</b> Cold = pesan masuk pertama kali dari nomor ini (sama dengan pesan pembuka bot). Jika leadRule di keywords.json = platform, pesan itu juga harus memuat keyword platform. Warm = percakapan lebih dari 10 pesan customer. Hot = ada booking/transfer/pembayaran dst (daftar di keywords.json), atau sudah Existing.</p>
         <p><b>Data Leads:</b> New = pesan masuk pertama kali. Existing = customer yang pernah booking/transfer melakukannya untuk kedua kalinya (sinyal transaksi berikutnya yang berjarak minimal 24 jam dari sebelumnya).</p>
         <p>Untuk menguji Existing: kirim pesan pertama berisi keyword platform dan transaksi (mis. "dari IG, mau booking"), klik <b>+1 hari</b>, lalu kirim "mau transfer lagi". Untuk Warm: kirim lebih dari 10 pesan. Chat di sini tidak dikirim ke WhatsApp dan tidak masuk CRM asli.</p>
       </div>
@@ -141,7 +141,7 @@ function renderCrm() {
   const el = $('#t-crm');
   if (!el) return;
   if (!leads.length) {
-    el.innerHTML = '<div class="p-8 text-center text-sm text-gray-400 italic">Belum ada nomor uji yang menjadi lead. Chat harus memuat kata kunci sumber (misalnya Instagram atau TikTok) agar tercatat di CRM.</div>';
+    el.innerHTML = '<div class="p-8 text-center text-sm text-gray-400 italic">Belum ada nomor uji yang menjadi lead. Lead dibuat dari pesan pertama sebuah nomor. Jika sudah terlanjur chat sebelumnya, klik Reset nomor ini atau pakai Nomor uji baru.</div>';
     return;
   }
   const label = Object.fromEntries((S.requiredFields || []).map((f) => [f.id, f.label]));

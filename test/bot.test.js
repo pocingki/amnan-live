@@ -7,6 +7,11 @@ import path from 'node:path';
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'amnan-bot-'));
 process.env.BOT_NO_DELAY = '1';
 
+// tes aturan "platform": salin keywords.json dengan leadRule platform (bawaan produksi: all)
+const kw = JSON.parse(fs.readFileSync('config/keywords.json', 'utf8'));
+process.env.KEYWORDS_FILE = path.join(process.env.DATA_DIR, 'keywords.test.json');
+fs.writeFileSync(process.env.KEYWORDS_FILE, JSON.stringify({ ...kw, leadRule: 'platform' }));
+
 const settings = await import('../src/settings.js');
 const C = await import('../src/conversations.js');
 const bot = await import('../src/bot.js');

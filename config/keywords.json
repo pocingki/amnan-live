@@ -1,6 +1,6 @@
 {
-  "_catatan": "Edit file ini untuk menyesuaikan pencocokan kata kunci. Dicocokkan sebagai kata utuh, tidak peka huruf besar/kecil. leadRule: 'platform' = lead hanya jika pesan PERTAMA memuat kata kunci platform; 'keyword' = platform atau trigger; 'all' = semua pesan pertama. hotKeywords = sinyal transaksi/booking (Hot); kata tunggal >= 5 huruf menerima imbuhan, negasi seperti 'belum transfer' diabaikan. warmAfterMessages = Warm jika pesan customer lebih dari angka ini. transactionGapHours = jeda (jam) agar sinyal transaksi berikutnya dihitung transaksi ke-2 (Existing).",
-  "leadRule": "platform",
+  "_catatan": "Edit file ini untuk menyesuaikan pencocokan kata kunci. Dicocokkan sebagai kata utuh, tidak peka huruf besar/kecil. leadRule: 'all' (bawaan) = setiap pesan pertama dari nomor baru langsung Cold; 'platform' = hanya jika pesan PERTAMA memuat kata kunci platform; 'keyword' = platform atau trigger. hotKeywords = sinyal transaksi/booking (Hot); kata tunggal >= 5 huruf menerima imbuhan, negasi seperti 'belum transfer' diabaikan. warmAfterMessages = Warm jika pesan customer lebih dari angka ini. transactionGapHours = jeda (jam) agar sinyal transaksi berikutnya dihitung transaksi ke-2 (Existing).",
+  "leadRule": "all",
   "warmAfterMessages": 10,
   "transactionGapHours": 24,
   "platforms": {
