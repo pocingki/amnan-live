@@ -1,0 +1,20 @@
+{
+  "name": "amnan-live",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Amnan SaaS - demo live lead tracker WhatsApp (Baileys)",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/leads.test.js && node test/bot.test.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "latest",
+    "pino": "^9.5.0",
+    "qrcode": "^1.5.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

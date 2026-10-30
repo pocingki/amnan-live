@@ -1,0 +1,98 @@
+{
+  "_catatan": "Edit file ini untuk menyesuaikan pencocokan kata kunci. Dicocokkan sebagai kata utuh, tidak peka huruf besar/kecil. leadRule: 'platform' = lead hanya jika pesan PERTAMA memuat kata kunci platform; 'keyword' = platform atau trigger; 'all' = semua pesan pertama. hotKeywords = sinyal transaksi/booking (Hot); kata tunggal >= 5 huruf menerima imbuhan, negasi seperti 'belum transfer' diabaikan. warmAfterMessages = Warm jika pesan customer lebih dari angka ini. transactionGapHours = jeda (jam) agar sinyal transaksi berikutnya dihitung transaksi ke-2 (Existing).",
+  "leadRule": "platform",
+  "warmAfterMessages": 10,
+  "transactionGapHours": 24,
+  "platforms": {
+    "Instagram": [
+      "instagram",
+      "ig"
+    ],
+    "Facebook": [
+      "facebook",
+      "fb"
+    ],
+    "TikTok": [
+      "tiktok"
+    ],
+    "Google Ads": [
+      "google"
+    ],
+    "Website": [
+      "website",
+      "web",
+      "situs"
+    ]
+  },
+  "triggers": [
+    "harga",
+    "paket",
+    "order",
+    "pesan",
+    "booking",
+    "info",
+    "tanya",
+    "promo",
+    "daftar",
+    "minat"
+  ],
+  "hotKeywords": [
+    "booking",
+    "booked",
+    "book",
+    "boking",
+    "deal",
+    "fix",
+    "setuju",
+    "oke deal",
+    "jadi ambil",
+    "ambil paket",
+    "checkout",
+    "order sekarang",
+    "pesan sekarang",
+    "transfer",
+    "tf",
+    "trf",
+    "sudah transfer",
+    "sudah tf",
+    "bukti transfer",
+    "bukti bayar",
+    "bukti pembayaran",
+    "kirim bukti",
+    "struk",
+    "kwitansi",
+    "bayar",
+    "sudah bayar",
+    "bayar di tempat",
+    "pembayaran",
+    "konfirmasi pembayaran",
+    "konfirmasi",
+    "dp",
+    "sudah dp",
+    "down payment",
+    "uang muka",
+    "lunas",
+    "pelunasan",
+    "cicilan",
+    "invoice",
+    "tagihan",
+    "rekening",
+    "no rekening",
+    "norek",
+    "virtual account",
+    "va",
+    "qris",
+    "gopay",
+    "ovo",
+    "shopeepay",
+    "cash",
+    "tunai",
+    "cod",
+    "reservasi",
+    "jadwalkan",
+    "mau daftar",
+    "daftar sekarang",
+    "sudah daftar"
+  ],
+  "defaultPlatform": "Lainnya"
+}

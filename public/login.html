@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Masuk - Lead Tracker Gateway</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #fff; color: #1f2937; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+        .card { width: 100%; max-width: 380px; margin: 16px; background: #fff; border: 1px solid #e5e7eb; border-top: 4px solid #083284; border-radius: 12px; padding: 28px; box-shadow: 0 4px 16px rgba(8,50,132,.08); }
+        .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+        .brand img { width: 40px; height: 40px; }
+        h1 { margin: 0; font-size: 18px; color: #083284; }
+        .sub { margin: 0; font-size: 12px; color: #6b7280; }
+        label { display: block; font-size: 13px; font-weight: 500; margin: 14px 0 6px; }
+        input { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; }
+        input:focus { outline: 2px solid #75c5f5; border-color: transparent; }
+        button { width: 100%; margin-top: 20px; padding: 10px; border: 0; border-radius: 8px; background: #083284; color: #fff; font-size: 14px; font-weight: 500; cursor: pointer; }
+        button:hover { background: #062567; }
+        .error { display: none; margin-top: 14px; padding: 8px 12px; background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: 8px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <form class="card" method="POST" action="/login">
+        <div class="brand">
+            <img src="favicon.svg" alt="">
+            <div>
+                <h1>Lead Tracker Gateway</h1>
+                <p class="sub">Masuk untuk membuka dashboard</p>
+            </div>
+        </div>
+        <div id="error" class="error">Username atau password salah.</div>
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit">Masuk</button>
+    </form>
+    <script>
+        if (new URLSearchParams(location.search).has('error')) document.getElementById('error').style.display = 'block';
+    </script>
+</body>
+</html>
