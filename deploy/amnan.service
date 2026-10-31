@@ -1,0 +1,38 @@
+# Unit systemd. Pasang:
+#   sudo useradd --system --home /opt/amnan-live --shell /usr/sbin/nologin amnan
+#   sudo mkdir -p /var/lib/amnan && sudo chown amnan:amnan /var/lib/amnan
+#   sudo cp deploy/amnan.service /etc/systemd/system/amnan.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now amnan
+# Sesuaikan path Node (which node) dan WorkingDirectory.
+[Unit]
+Description=Amnan Live (CRM + bot WhatsApp)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=amnan
+Group=amnan
+WorkingDirectory=/opt/amnan-live
+EnvironmentFile=/opt/amnan-live/.env
+Environment=NODE_ENV=production
+Environment=DATA_DIR=/var/lib/amnan
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=5
+# beri waktu server menyimpan data (flush) saat dimatikan
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# Pengerasan
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/amnan
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

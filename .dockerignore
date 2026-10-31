@@ -1,0 +1,14 @@
+node_modules
+.git
+.github
+.env
+data
+backups
+*.log
+docs
+deploy
+test
+public/assets/css/tailwind.css
+Dockerfile
+docker-compose.yml
+.dockerignore
