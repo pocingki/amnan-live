@@ -6,7 +6,7 @@ import { emit } from '../events.js';
 
 const CONV = /^\/api\/conversations\/(\d+)(?:\/(read|mode|send|delete-messages|resend|attention\/clear))?$/;
 const METHODS = { '': ['GET', 'DELETE'], read: ['POST'], mode: ['POST'], send: ['POST'], 'delete-messages': ['POST'], resend: ['POST'], 'attention/clear': ['POST'] };
-const TESTER_ACTS = ['send', 'phone-reply', 'reset', 'mode', 'advance'];
+const TESTER_ACTS = ['send', 'phone-reply', 'reset', 'mode', 'advance', 'transaction-done'];
 const KINDS = ['text', 'image', 'audio', 'video', 'sticker', 'document', 'location', 'contact'];
 const BAD_PHONE = 'Nomor uji tidak valid (8-15 digit)';
 
@@ -84,6 +84,7 @@ export async function handle(req, res, url, ctx) {
       }
       const message = C.addMessage(conv, 'admin', text);
       Object.assign(message, { type: 'text', sender: ctx.user.name, status: 'sent', waId: r?.waId });
+      conv.adminLastAt = message.ts;
       clearAttention(conv);
       const lead = leadStore.findByPhone(conv.phone) || (conv.lid && leadStore.findByLid?.(conv.lid));
       if (lead) leadStore.update(lead.id, { lastReplyAt: message.ts });
@@ -124,6 +125,13 @@ export async function handle(req, res, url, ctx) {
     if (!phone) return fail(400, BAD_PHONE);
     if (act === 'reset') return bot.testerReset(phone), ok();
     if (act === 'mode') return ['bot', 'admin'].includes(b.mode) ? ok({ status: bot.testerMode(phone, b.mode) }) : fail(400, 'Mode tidak valid');
+    if (act === 'transaction-done') {
+      try {
+        return ok(bot.testerTransactionDone(phone));
+      } catch (e) {
+        return e.code === 'NO_OPEN' ? fail(400, e.message) : fail(500, 'Terjadi kesalahan pada server');
+      }
+    }
     if (act === 'advance') {
       const h = Number(b.hours);
       return h > 0 && h <= 24 * 365 ? ok(bot.testerAdvance(phone, h)) : fail(400, 'Jam tidak valid');

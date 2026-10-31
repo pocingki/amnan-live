@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { plan, decide, fill, applyReplyEffect } from '../src/bot-plan.js';
+import { plan, decide, fill, applyReplyEffect, adminReturnMs } from '../src/bot-plan.js';
 
 const NOW = 1_700_000_000_000;
 const S0 = () => ({
@@ -56,14 +56,15 @@ test('pesan basi: tanpa perubahan state', () => {
   const p = plan(c, T('Budi', { ts: NOW - 11 * 60000 }), S0(), NOW);
   assert.deepEqual(p, { replies: [], attention: { reason: 'stale' }, ignored: false }); assert.equal(JSON.stringify(c), snap);
 });
-test('durasi habis -> handover tanpa pembuka ulang', () => {
-  const S = { ...S0(), botDurationMinutes: 5 }, c = C0({ botStartedAt: NOW - 6 * 60000, openingSent: false });
+test('durasi habis -> sesi baru: kembali ke pembuka, botStartedAt di-reset, mode tetap bot', () => {
+  const S = { ...S0(), botDurationMinutes: 5 }, c = C0({ botStartedAt: NOW - 6 * 60000, openingSent: true });
   const p = plan(c, T('halo'), S, NOW);
-  assert.deepEqual(kinds(p), ['handover']); assert.equal(p.replies[0].text, 'Dilanjut Dewi.');
-  assert.deepEqual(p.attention, { reason: 'bot_duration' }); assert.equal(c.mode, 'bot');
-  p.replies[0].commit(c); assert.equal(c.mode, 'admin'); assert.equal(c.pending, null);
-  const c2 = C0({ botStartedAt: NOW - 6 * 60000 }), p2 = plan(c2, T('halo'), { ...S, handoverMessage: '' }, NOW);
-  assert.equal(c2.mode, 'admin'); assert.equal(p2.replies.length, 0);
+  assert.equal(kinds(p)[0], 'opening'); assert.equal(c.botStartedAt, NOW); assert.equal(c.mode, 'bot');
+  assert.equal(p.attention, null);
+  p.replies[0].commit(c); assert.equal(c.openingSent, true);
+  // belum habis -> tidak ada pembuka ulang
+  const c2 = C0({ botStartedAt: NOW - 4 * 60000, openingSent: true }), p2 = plan(c2, T('halo'), S, NOW);
+  assert.notEqual(kinds(p2)[0], 'opening'); assert.equal(c2.botStartedAt, NOW - 4 * 60000);
 });
 test('cooldown fallback + attention no_reply', () => {
   const S = { ...S0(), requiredFields: [] }, c = C0({ pending: null });
@@ -102,4 +103,37 @@ test('botEnabled false / mode admin -> ignored; applyReplyEffect', () => {
   assert.equal(plan(C0(), T('x'), { ...S0(), botEnabled: false }, NOW).ignored, true);
   assert.equal(plan(C0({ mode: 'admin' }), T('x'), S0(), NOW).ignored, true);
   const c = C0(); applyReplyEffect(c, 'completion', null, 5); assert.equal(c.completedAt, 5);
+});
+test('admin diam melewati adminAutoReturnMinutes -> bot aktif kembali dengan pembuka', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 60 };
+  const c = C0({ mode: 'admin', adminLastAt: NOW - 61 * 60000, openingSent: true, pending: 'nama' });
+  const p = plan(c, T('halo'), S, NOW);
+  assert.equal(c.mode, 'bot'); assert.equal(c.botStartedAt, NOW); assert.equal(c.pending, null);
+  assert.equal(p.returnedToBot, 60); assert.equal(kinds(p)[0], 'opening');
+});
+test('admin masih aktif (belum melewati batas) -> bot tetap diam', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 60 };
+  const c = C0({ mode: 'admin', adminLastAt: NOW - 59 * 60000 }), p = plan(c, T('halo'), S, NOW);
+  assert.equal(c.mode, 'admin'); assert.equal(p.ignored, true); assert.equal(p.replies.length, 0);
+  assert.equal(adminReturnMs(c, S, NOW), 60000);
+});
+test('adminAutoReturnMinutes = 0 (mati) -> tetap admin berapa lama pun', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 0 };
+  const c = C0({ mode: 'admin', adminLastAt: NOW - 90 * 86400000 }), p = plan(c, T('halo'), S, NOW);
+  assert.equal(c.mode, 'admin'); assert.equal(p.ignored, true); assert.equal(adminReturnMs(c, S, NOW), null);
+});
+test('pesan basi tidak membangunkan bot dari mode admin', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 60 };
+  const c = C0({ mode: 'admin', adminLastAt: NOW - 120 * 60000 }), p = plan(c, T('halo', { ts: NOW - 11 * 60000 }), S, NOW);
+  assert.equal(c.mode, 'admin'); assert.equal(p.ignored, true);
+});
+test('bot nonaktif / reaksi tidak membangunkan bot dari mode admin', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 60 };
+  const c1 = C0({ mode: 'admin', adminLastAt: 0 }); plan(c1, T('halo'), { ...S, botEnabled: false }, NOW); assert.equal(c1.mode, 'admin');
+  const c2 = C0({ mode: 'admin', adminLastAt: 0 }); plan(c2, T('', { kind: 'reaction' }), S, NOW); assert.equal(c2.mode, 'admin');
+});
+test('adminLastAt tanpa field: dihitung dari pesan admin terakhir', () => {
+  const S = { ...S0(), adminAutoReturnMinutes: 60 };
+  const c = C0({ mode: 'admin', messages: [{ by: 'admin', ts: NOW - 30 * 60000 }] });
+  assert.equal(adminReturnMs(c, S, NOW), 30 * 60000);
 });

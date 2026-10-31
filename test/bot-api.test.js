@@ -110,3 +110,13 @@ test('tester: validasi nomor, send, phone-reply, reset', async () => {
   assert.equal((await call('GET', '/api/tester?phone=6281200000077')).body.numbers.length, 0);
   assert.equal((await call('POST', '/api/tester/xyz', { body: { phone: '6281200000077' } })).handled, false);
 });
+test('tester: transaction-done -> 400 bila tidak ada transaksi terbuka, 200 bila ada', async () => {
+  const none = await call('POST', '/api/tester/transaction-done', { body: { phone: '6281299990001' } });
+  assert.equal(none.code, 400);
+  const bad = await call('POST', '/api/tester/transaction-done', { body: { phone: '12' } });
+  assert.equal(bad.code, 400);
+  await call('POST', '/api/tester/send', { body: { phone: '6281299990002', text: 'Halo dari Instagram, mau booking' } });
+  const ok = await call('POST', '/api/tester/transaction-done', { body: { phone: '6281299990002' } });
+  assert.equal(ok.code, 200);
+  assert.ok(ok.body.lead.transactionCycles.every((c) => c.doneAt));
+});

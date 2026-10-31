@@ -106,8 +106,8 @@ export async function mount(el) {
       <div class="card text-gray-700 space-y-2">
         <div class="font-semibold text-brand-800">Aturan yang diuji</div>
         <p><b>Status Lead:</b> Cold = pesan masuk pertama kali dari nomor ini (sama dengan pesan pembuka bot). Jika leadRule di keywords.json = platform, pesan itu juga harus memuat keyword platform. Warm = percakapan lebih dari 10 pesan customer. Hot = ada booking/transfer/pembayaran dst (daftar di keywords.json), atau sudah Existing.</p>
-        <p><b>Data Leads:</b> New = pesan masuk pertama kali. Existing = customer yang pernah booking/transfer melakukannya untuk kedua kalinya (sinyal transaksi berikutnya yang berjarak minimal 24 jam dari sebelumnya).</p>
-        <p>Untuk menguji Existing: kirim pesan pertama berisi keyword platform dan transaksi (mis. "dari IG, mau booking"), klik <b>+1 hari</b>, lalu kirim "mau transfer lagi". Untuk Warm: kirim lebih dari 10 pesan. Chat di sini tidak dikirim ke WhatsApp dan tidak masuk CRM asli.</p>
+        <p><b>Data Leads:</b> New = pesan masuk pertama kali. Existing = customer yang transaksi pertamanya sudah selesai lalu mengirim sinyal transaksi baru (booking, dp, bayar). Transaksi dianggap selesai bila ada pesan "lunas" lalu sinyal berikutnya berjarak minimal 24 jam, bila sinyal terakhir lebih dari 30 hari lalu, atau bila admin menekan <b>Transaksi selesai</b>.</p>
+        <p>Untuk menguji Existing lewat chat: kirim "sudah dp", lalu "sudah lunas", klik <b>+1 hari</b>, lalu kirim "mau booking lagi". Untuk menguji pelunasan di lokasi: kirim "mau booking", klik <b>Transaksi selesai</b>, lalu kirim "mau booking lagi" (tidak perlu menunggu 24 jam). Untuk Warm: kirim lebih dari 10 pesan. Chat di sini tidak dikirim ke WhatsApp dan tidak masuk CRM asli.</p>
       </div>
     </div>
   </div>
@@ -182,7 +182,15 @@ function renderLine() {
   if (!el) return;
   let t;
   if (!st.botEnabled) t = 'Bot nonaktif (lihat Pengaturan). Bot tidak akan membalas.';
-  else if (st.mode === 'admin') t = `Ditangani ${S.adminName} (take over). Bot tidak membalas.`;
+  else if (st.mode === 'admin') {
+    if (st.adminReturnMs == null) t = `Ditangani ${S.adminName} (take over). Bot tidak membalas.`;
+    else {
+      const left = Math.max(0, st.adminReturnMs - (Date.now() - stAt));
+      t = left > 0
+        ? `Ditangani ${S.adminName} (take over). Bot aktif kembali otomatis bila admin tidak membalas dalam ${Math.floor(left / 60000)} menit ${Math.floor((left % 60000) / 1000)} detik.`
+        : `Ditangani ${S.adminName}, tetapi admin sudah tidak aktif melewati batas. Pesan pelanggan berikutnya mengembalikan percakapan ke bot.`;
+    }
+  }
   else if (st.remainingMs == null) t = 'Bot aktif tanpa batas durasi.';
   else {
     const left = Math.max(0, st.remainingMs - (Date.now() - stAt));
@@ -196,7 +204,12 @@ function renderLine() {
 }
 
 function renderActions() {
-  $('#t-actions').innerHTML = `<button type="button" data-t="reset" class="${BTN_LIGHT}">Reset nomor ini</button>
+  const me = leads.find((l) => l.phone === phone);
+  const open = ((me && me.transactionCycles) || []).filter((c) => c && !c.doneAt).length;
+  const txBtn = open
+    ? `<button type="button" data-t="tx-done" class="${BTN_LIGHT}">Transaksi selesai (${open} terbuka)</button>`
+    : `<button type="button" disabled title="Belum ada transaksi terbuka (kirim pesan seperti 'mau booking' atau 'sudah dp' dulu)" class="${BTN_LIGHT} opacity-50 cursor-not-allowed">Transaksi selesai (belum ada)</button>`;
+  $('#t-actions').innerHTML = txBtn + `<button type="button" data-t="reset" class="${BTN_LIGHT}">Reset nomor ini</button>
     <button type="button" data-t="mode" class="${BTN_LIGHT}">${st.mode === 'bot' ? 'Simulasikan take over admin' : 'Kembalikan ke bot'}</button>
     <span class="text-xs text-gray-600 self-center ml-2">Majukan waktu:</span>
     <button type="button" data-h="1" class="${BTN_LIGHT}">+1 jam</button><button type="button" data-h="24" class="${BTN_LIGHT}">+1 hari</button><button type="button" data-h="168" class="${BTN_LIGHT}">+7 hari</button>`;
@@ -253,6 +266,13 @@ async function onAction(e) {
     } else if (b.dataset.t === 'reset') {
       await send('/api/tester/reset', { phone });
       setView(await api(qs(phone))); chips = [];
+    } else if (b.dataset.t === 'tx-done') {
+      const before = snapshot();
+      const r = await send('/api/tester/transaction-done', { phone });
+      setView(r);
+      chip('Transaksi ditandai selesai (simulasi tombol di CRM)');
+      await resync(phone, before);
+      return;
     } else if (b.dataset.t === 'mode') {
       const before = snapshot();
       const r = await send('/api/tester/mode', { phone, mode: st.mode === 'bot' ? 'admin' : 'bot' });

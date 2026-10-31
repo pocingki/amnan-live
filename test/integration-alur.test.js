@@ -90,7 +90,7 @@ test('[butuh A1] POST /api/tester/phone-reply: admin membalas dari HP -> mode ja
   assert.equal((after.json.replies || []).length, 0, 'bot diam saat admin mengambil alih');
 });
 
-test('[butuh A1] durasi bot habis -> handover (bukan reset pembuka): handoverMessage terkirim lalu mode admin', async () => {
+test('[butuh A1] durasi bot habis -> kembali ke pesan pembuka, bot tetap aktif', async () => {
   const get = await c.get('/api/settings');
   assert.equal(get.status, 200);
   const put = await c.req('PUT', '/api/settings', { body: { botDurationMinutes: 5 }, headers: { 'If-Match': String(get.json.version) } });
@@ -100,8 +100,7 @@ test('[butuh A1] durasi bot habis -> handover (bukan reset pembuka): handoverMes
   await c.post('/api/tester/advance', { phone: p, hours: 1 });
   const r = await send(p, 'halo lagi');
   const texts = (r.json.replies || []).map((m) => m.text).join('\n');
-  assert.match(texts, /dilanjutkan oleh/i, 'handoverMessage harus terkirim');
-  assert.doesNotMatch(texts, /selamat datang/i, 'pembuka tidak boleh diulang');
+  assert.match(texts, /selamat datang/i, 'pembuka harus dikirim lagi');
   const v = await c.get('/api/tester?phone=' + p);
-  assert.equal(v.json.status.mode, 'admin');
+  assert.equal(v.json.status.mode, 'bot');
 });

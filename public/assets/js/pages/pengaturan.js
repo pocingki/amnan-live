@@ -15,7 +15,7 @@ const BADGE = {
 const VARS = 'Variabel: {nama} {bot} {admin}';
 
 const RANGES = [
-  ['botDurationMinutes', 'Batas durasi bot aktif', 0, 10080], ['staleMinutes', 'Batas pesan basi', 1, 1440],
+  ['botDurationMinutes', 'Batas durasi bot aktif', 0, 10080], ['adminAutoReturnMinutes', 'Bot aktif kembali otomatis', 0, 10080], ['staleMinutes', 'Batas pesan basi', 1, 1440],
   ['fallbackCooldownMinutes', 'Jeda respons default', 0, 1440], ['sendRateLimitPerMinute', 'Batas kirim per menit', 1, 600],
   ['retentionDays', 'Retensi data', 0, 3650],
 ];
@@ -88,6 +88,7 @@ function render() {
       <fieldset class="space-y-4 border-t border-gray-100 pt-4"><legend class="font-semibold text-brand-800 mb-2">Serah-terima ke admin &amp; ketahanan</legend>
         ${field('Pesan serah-terima', `<textarea name="handoverMessage" rows="2" class="${INP}" ${dis}>${esc(S.handoverMessage)}</textarea>`, 'Dikirim saat percakapan dialihkan dari bot ke admin. ' + VARS)}
         ${chk('autoTakeoverOnPhoneReply', S.autoTakeoverOnPhoneReply, 'Otomatis ambil alih saat admin membalas dari HP', 'Bila admin membalas langsung lewat aplikasi WhatsApp di HP, bot berhenti membalas percakapan itu.', dis)}
+        ${num('adminAutoReturnMinutes', 'Bot aktif kembali otomatis setelah admin tidak membalas (menit)', '0 = mati (bot tetap diam sampai Anda mengembalikannya manual). Jika diisi, saat pelanggan chat lagi dan admin sudah tidak aktif (tidak membalas atau mengambil alih) lebih lama dari ini, percakapan kembali ke mode bot dan dibalas pesan pembuka.', 0, 10080)}
         ${num('staleMinutes', 'Batas pesan basi (menit)', 'Pesan yang lebih lama dari ini (mis. terkirim saat bot mati) tidak dibalas bot dan ditandai perlu perhatian.', 1, 1440)}
         ${num('fallbackCooldownMinutes', 'Jeda respons default (menit)', 'Respons default tidak dikirim berulang ke nomor yang sama dalam rentang ini. 0 = tanpa jeda.', 0, 1440)}
         ${num('sendRateLimitPerMinute', 'Batas kirim per menit', 'Melindungi nomor WhatsApp dari pemblokiran karena mengirim terlalu cepat.', 1, 600)}

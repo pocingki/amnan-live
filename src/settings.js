@@ -21,6 +21,7 @@ export const DEFAULTS = {
   botDurationMinutes: 0, // 0 = tanpa batas
   staleMinutes: 10,
   autoTakeoverOnPhoneReply: true,
+  adminAutoReturnMinutes: 0, // 0 = mati: tetap mode admin sampai dikembalikan manual
   fallbackCooldownMinutes: 30,
   sendRateLimitPerMinute: 20,
   maxMediaMB: 16,
@@ -128,7 +129,7 @@ function clean(p, base) {
   for (const [k, max] of [['brandName', 60], ['brandTagline', 100], ['botName', 60], ['adminName', 60]]) if (k in p) o[k] = str(p[k], max) || DEFAULTS[k];
   for (const k of ['openingMessage', 'fallbackMessage', 'handoverMessage', 'completionMessage']) if (k in p) o[k] = str(p[k], 2000);
   for (const k of ['botEnabled', 'autoTakeoverOnPhoneReply']) if (k in p) o[k] = !!p[k];
-  for (const [k, min, max] of [['botDurationMinutes', 0, 10080], ['staleMinutes', 1, 1440], ['fallbackCooldownMinutes', 0, 1440], ['sendRateLimitPerMinute', 1, 120], ['maxMediaMB', 1, 64], ['retentionDays', 0, 3650]]) {
+  for (const [k, min, max] of [['botDurationMinutes', 0, 10080], ['adminAutoReturnMinutes', 0, 10080], ['staleMinutes', 1, 1440], ['fallbackCooldownMinutes', 0, 1440], ['sendRateLimitPerMinute', 1, 120], ['maxMediaMB', 1, 64], ['retentionDays', 0, 3650]]) {
     if (k in p) o[k] = clampInt(p[k], min, max, DEFAULTS[k]);
   }
   if ('slangMap' in p) {

@@ -20,6 +20,21 @@ export function remainingMs(conv, S, now = Date.now()) {
 export function setMode(conv, mode, now = Date.now()) {
   conv.mode = mode;
   if (mode === 'bot') conv.botStartedAt = now;
+  else if (mode === 'admin') conv.adminLastAt = now;
+}
+
+/** Kapan admin terakhir aktif di percakapan ini (ambil alih / membalas). 0 bila tidak diketahui. */
+export function adminLastAt(conv) {
+  if (conv.adminLastAt) return conv.adminLastAt;
+  const m = [...(conv.messages || [])].reverse().find((x) => x.by === 'admin');
+  return m ? m.ts : 0;
+}
+
+/** Sisa ms sebelum mode admin boleh kembali ke bot (null bila bukan mode admin atau fitur mati). */
+export function adminReturnMs(conv, S, now = Date.now()) {
+  const mins = Number(S.adminAutoReturnMinutes) || 0;
+  if (conv.mode !== 'admin' || !S.botEnabled || !(mins > 0)) return null;
+  return Math.max(0, adminLastAt(conv) + mins * 60000 - now);
 }
 
 /** Efek keluaran sebuah balasan; dipanggil setelah balasan benar-benar terkirim. */
@@ -30,18 +45,33 @@ export function applyReplyEffect(conv, kind, fieldId, now = Date.now()) {
   else if (kind === 'completion') conv.completedAt = now;
   else if (kind === 'handover') {
     conv.mode = 'admin';
+    conv.adminLastAt = now;
     conv.pending = null;
   }
 }
 
 export function plan(conv, msg, S, now = Date.now()) {
   const out = { replies: [], attention: null, ignored: false };
-  if (!S.botEnabled || conv.mode !== 'bot' || msg.kind === 'reaction' || msg.kind === 'system') {
+  if (!S.botEnabled || msg.kind === 'reaction' || msg.kind === 'system') {
     out.ignored = true;
     return out;
   }
+  const stale = now - msg.ts > S.staleMinutes * 60000;
+  // Mode admin: bot diam, kecuali admin sudah tidak aktif melebihi adminAutoReturnMinutes.
+  // Pesan basi tidak membangunkan bot.
+  if (conv.mode !== 'bot') {
+    const left = adminReturnMs(conv, S, now);
+    if (stale || left == null || left > 0) {
+      out.ignored = true;
+      return out;
+    }
+    setMode(conv, 'bot', now);
+    conv.openingSent = false; // sesi baru: kembali ke pesan pembuka
+    conv.pending = null;
+    out.returnedToBot = Number(S.adminAutoReturnMinutes);
+  }
   // Pesan basi: tanpa balasan, tanpa ubah state.
-  if (now - msg.ts > S.staleMinutes * 60000) {
+  if (stale) {
     out.attention = { reason: 'stale' };
     return out;
   }
@@ -52,12 +82,11 @@ export function plan(conv, msg, S, now = Date.now()) {
   };
   const cooled = () => now - (conv.lastFallbackAt || 0) >= S.fallbackCooldownMinutes * 60000;
 
-  // Durasi bot habis: serah terima, tanpa pembuka ulang.
+  // Durasi bot habis: sesi baru. Sesuai teks Pengaturan, pesan berikutnya kembali ke pesan pembuka
+  // dan hitungan durasi dimulai ulang; bot tetap aktif (data yang sudah terkumpul tidak dihapus).
   if (S.botDurationMinutes > 0 && now - conv.botStartedAt > S.botDurationMinutes * 60000) {
-    out.attention = { reason: 'bot_duration' };
-    if (S.handoverMessage) add('handover', S.handoverMessage);
-    else applyReplyEffect(conv, 'handover', null, now);
-    return out;
+    conv.botStartedAt = now;
+    conv.openingSent = false;
   }
 
   const first = !conv.openingSent;

@@ -3,9 +3,9 @@
 import { randomBytes } from 'node:crypto';
 import * as convStore from './conversations.js';
 import * as settingsStore from './settings.js';
-import { classify } from './leads.js';
+import { classify, markTransactionDone } from './leads.js';
 import { processIncoming } from './bot-pipeline.js';
-import { setMode, remainingMs } from './bot-plan.js';
+import { setMode, remainingMs, adminReturnMs } from './bot-plan.js';
 
 const LABEL = {
   image: '[Gambar]', audio: '[Pesan suara]', video: '[Video]', sticker: '[Stiker]',
@@ -15,6 +15,7 @@ const LABEL = {
 export function createTester(over = {}) {
   const settings = over.settings || settingsStore;
   const classifyFn = over.classify || classify;
+  const markDone = over.markTransactionDone || markTransactionDone;
   const newConv = over.newConv || convStore.newConv;
   const testers = new Map(); // nomor -> {convs, lead, offset, sendFail}
   let seq = 0;
@@ -22,7 +23,10 @@ export function createTester(over = {}) {
   const tnow = (t) => Date.now() + t.offset;
   const status = (t, S) => {
     const c = t.convs.get(t.phone);
-    return { mode: c?.mode || 'bot', remainingMs: c ? remainingMs(c, S, tnow(t)) : null, botEnabled: S.botEnabled };
+    return {
+      mode: c?.mode || 'bot', remainingMs: c ? remainingMs(c, S, tnow(t)) : null, botEnabled: S.botEnabled,
+      adminReturnMs: c ? adminReturnMs(c, S, tnow(t)) : null,
+    };
   };
 
   function T(phone) {
@@ -123,6 +127,14 @@ export function createTester(over = {}) {
       T(phone).offset += hours * 3600000;
       return this.testerView(phone);
     },
+    /** Setara tombol "Transaksi selesai" di CRM: menutup siklus transaksi terbuka milik lead virtual nomor ini. */
+    testerTransactionDone(phone) {
+      const t = testers.get(phone);
+      const open = (t?.lead?.transactionCycles || []).some((c) => c && !c.doneAt);
+      if (!open) throw Object.assign(new Error('Tidak ada transaksi terbuka untuk ditandai selesai'), { code: 'NO_OPEN' });
+      Object.assign(t.lead, markDone(t.lead, tnow(t)));
+      return this.testerView(phone);
+    },
     async testerPhoneReply(phone, text) {
       const t = T(phone);
       return run(t, envelope(t, { text, fromMe: true, fromPhone: true }));
@@ -131,4 +143,4 @@ export function createTester(over = {}) {
 }
 
 const def = createTester();
-export const { testerView, testerSend, testerReset, testerMode, testerAdvance, testerPhoneReply } = def;
+export const { testerView, testerSend, testerReset, testerMode, testerAdvance, testerPhoneReply, testerTransactionDone } = def;

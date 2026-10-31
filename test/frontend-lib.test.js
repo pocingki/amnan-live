@@ -229,7 +229,7 @@ test('pesan: move menggeser berdasarkan id', () => {
 });
 
 test('pengaturan: buildSettingsPatch validasi', () => {
-  const ok = { brandName: 'acesio', botName: 'Bot', adminName: 'Admin', botDurationMinutes: '0', staleMinutes: '10', fallbackCooldownMinutes: '30', sendRateLimitPerMinute: '20', retentionDays: '0', attentionMinutes: '15', botEnabled: 'on', onHot: 'on', webhookUrl: '', telegramBotToken: '', telegramChatId: '' };
+  const ok = { brandName: 'acesio', botName: 'Bot', adminName: 'Admin', botDurationMinutes: '0', adminAutoReturnMinutes: '0', staleMinutes: '10', fallbackCooldownMinutes: '30', sendRateLimitPerMinute: '20', retentionDays: '0', attentionMinutes: '15', botEnabled: 'on', onHot: 'on', webhookUrl: '', telegramBotToken: '', telegramChatId: '' };
   const r = pengaturan.buildSettingsPatch(ok, { notify: { x: 1 } });
   assert.deepEqual(r.errors, []);
   assert.equal(r.patch.staleMinutes, 10);

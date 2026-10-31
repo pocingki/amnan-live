@@ -32,7 +32,7 @@ const A = '6281200000001';
 
 test('fasad mengekspor semua nama', () => {
   for (const n of ['fill', 'remainingMs', 'setMode', 'decide', 'matchIntent', 'normPhone', 'handleIncoming', 'onStatusUpdate', 'resendMessage',
-    'testerView', 'testerSend', 'testerReset', 'testerMode', 'testerAdvance', 'testerPhoneReply', 'view'])
+    'testerView', 'testerSend', 'testerReset', 'testerMode', 'testerAdvance', 'testerPhoneReply', 'testerTransactionDone', 'view'])
     assert.equal(typeof bot[n], 'function', n);
   assert.equal(bot.normPhone('0812-0000-0003'), '6281200000003');
   assert.equal(bot.normPhone('12'), null);
@@ -51,13 +51,13 @@ test('decide: pembuka + intent + pertanyaan; jawaban nama; penutup', () => {
   assert.equal(c.name, 'Andi');
   assert.deepEqual(bot.decide(c, 'lewati', S, 4000), ['Terima kasih.']); // penutup hanya sekali
 });
-test('durasi habis -> handover (bukan pembuka ulang) dan mode admin', () => {
+test('durasi habis -> pembuka ulang, durasi dihitung ulang, mode tetap bot', () => {
   const c = mkConv(); c.openingSent = true;
   const s = { ...S, botDurationMinutes: 5 };
   assert.equal(bot.remainingMs(c, s, 1000 + 60000), 4 * 60000);
-  assert.deepEqual(bot.decide(c, 'halo', s, 1000 + 6 * 60000), ['Dilanjutkan Dewi.']);
-  assert.equal(c.mode, 'admin');
-  assert.deepEqual(bot.decide(c, 'halo', s, 1000 + 7 * 60000), []);
+  const r = bot.decide(c, 'halo', s, 1000 + 6 * 60000);
+  assert.match(r[0], /^Halo/); assert.equal(c.mode, 'bot');
+  assert.equal(bot.remainingMs(c, s, 1000 + 7 * 60000), 4 * 60000);
 });
 test('fallback ber-cooldown dan bot nonaktif', () => {
   const c = mkConv(); c.openingSent = true;
@@ -90,13 +90,13 @@ test('tester: phone-reply -> takeover, bot diam setelahnya', async () => {
   assert.ok(t.testerView(A).messages.some((m) => m.by === 'system' && /Bot dinonaktifkan/.test(m.text)));
   assert.equal((await t.testerSend(A, 'ada promo?')).replies.length, 0);
 });
-test('tester: durasi habis lewat jam simulasi -> handover; nomor terpisah; tidak menyentuh CRM asli', async () => {
+test('tester: durasi habis lewat jam simulasi -> pembuka ulang; nomor terpisah; tidak menyentuh CRM asli', async () => {
   cur = { ...S, botDurationMinutes: 5 };
   const t = tester();
   await t.testerSend(A, 'Halo dari Instagram');
   t.testerAdvance(A, 1);
   const r = await t.testerSend(A, 'halo lagi');
-  assert.equal(r.replies[0].text, 'Dilanjutkan Dewi.'); assert.equal(r.status.mode, 'admin');
+  assert.match(r.replies[0].text, /^Halo/); assert.equal(r.status.mode, 'bot');
   assert.equal(t.testerView('6281200000009').status.mode, 'bot');
   assert.equal(C.get(A), undefined);
   t.testerReset(); assert.equal(t.testerView(A).numbers.length, 0);
@@ -109,4 +109,61 @@ test('tester: lead virtual dari platform; jawaban nama menyinkronkan lead', asyn
   const b = await t.testerSend(A, 'Andi');
   assert.equal(b.lead.name, 'Andi'); assert.equal(b.data.nama, 'Andi');
   assert.equal(t.testerView(A).leads.length, 1);
+});
+test('tester: admin membalas dari HP lalu diam > batas -> bot aktif kembali (jam simulasi)', async () => {
+  cur = { ...S, adminAutoReturnMinutes: 60 };
+  const t = tester();
+  await t.testerSend(A, 'Halo dari Instagram');
+  await t.testerPhoneReply(A, 'Halo kak, admin di sini');
+  assert.equal(t.testerView(A).status.mode, 'admin');
+  assert.ok(t.testerView(A).status.adminReturnMs > 0);
+  assert.equal((await t.testerSend(A, 'ada promo?')).replies.length, 0); // masih dalam batas -> diam
+  t.testerAdvance(A, 2); // +2 jam > 60 menit
+  const r = await t.testerSend(A, 'halo lagi');
+  assert.equal(r.status.mode, 'bot'); assert.match(r.replies[0].text, /^Halo/);
+  assert.ok(t.testerView(A).messages.some((m) => m.by === 'system' && /Bot aktif kembali/.test(m.text)));
+});
+test('tester: balasan admin berikutnya mengulang hitungan batas', async () => {
+  cur = { ...S, adminAutoReturnMinutes: 60 };
+  const t = tester();
+  await t.testerSend(A, 'Halo dari Instagram');
+  await t.testerPhoneReply(A, 'admin 1');
+  t.testerAdvance(A, 0.75); // 45 menit
+  await t.testerPhoneReply(A, 'admin 2'); // hitungan mulai lagi
+  t.testerAdvance(A, 0.75); // 45 menit sejak balasan terakhir (< 60)
+  assert.equal((await t.testerSend(A, 'halo')).replies.length, 0);
+  assert.equal(t.testerView(A).status.mode, 'admin');
+});
+test('tester: adminAutoReturnMinutes = 0 -> tetap admin walau 7 hari', async () => {
+  cur = { ...S, adminAutoReturnMinutes: 0 };
+  const t = tester();
+  await t.testerSend(A, 'Halo dari Instagram');
+  await t.testerPhoneReply(A, 'admin di sini');
+  t.testerAdvance(A, 168);
+  assert.equal((await t.testerSend(A, 'halo')).replies.length, 0);
+  assert.equal(t.testerView(A).status.mode, 'admin');
+  assert.equal(t.testerView(A).status.adminReturnMs, null);
+});
+
+test('tester: Transaksi selesai (pelunasan di lokasi) -> booking berikutnya langsung Existing', async () => {
+  cur = S;
+  const t = tester();
+  assert.throws(() => t.testerTransactionDone(A), (e) => e.code === 'NO_OPEN'); // belum ada lead/transaksi
+  await t.testerSend(A, 'Halo dari Instagram, mau booking');
+  await t.testerSend(A, 'sudah dp');
+  assert.equal(t.testerView(A).lead.dataType, 'New');
+  const v = t.testerTransactionDone(A);
+  assert.ok(v.lead.transactionCycles.every((c) => c.doneAt)); // semua siklus tertutup
+  assert.equal(v.lead.dataType, 'New'); // belum berubah sampai ada sinyal transaksi berikutnya
+  assert.throws(() => t.testerTransactionDone(A), (e) => e.code === 'NO_OPEN'); // tidak ada yang terbuka lagi
+  const r = await t.testerSend(A, 'saya mau booking lagi');
+  assert.equal(r.lead.dataType, 'Existing');
+});
+test('tester: Transaksi selesai tidak menyentuh nomor uji lain', async () => {
+  cur = S;
+  const t = tester(), B = '6281200000002';
+  await t.testerSend(A, 'Halo dari Instagram, mau booking');
+  await t.testerSend(B, 'Halo dari Instagram, mau booking');
+  t.testerTransactionDone(A);
+  assert.ok(t.testerView(B).lead.transactionCycles.some((c) => !c.doneAt));
 });

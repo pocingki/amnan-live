@@ -97,6 +97,7 @@ export async function handle(req, res, url, { sendJSON, readBody, audit }) {
         return fail(502, e.message);
       }
       const message = C.addMessage(conv, 'admin', text);
+      conv.adminLastAt = message.ts;
       C.save();
       return ok({ message });
     }

@@ -109,6 +109,7 @@ export async function processIncoming(msg, d) {
       setMode(conv, 'admin', now);
       d.convs.addMessage(conv, 'system', 'Admin membalas dari HP. Bot dinonaktifkan untuk percakapan ini.', now);
     }
+    conv.adminLastAt = Math.max(conv.adminLastAt || 0, msg.ts || now); // pengatur waktu bot aktif kembali
     conv.needsAttention = false;
     conv.attentionReason = null;
     conv.attentionAt = null;
@@ -130,6 +131,12 @@ export async function processIncoming(msg, d) {
   });
 
   const p = plan(conv, { text: msg.text, caption: msg.caption, kind: msg.kind, ts: msg.ts }, S, now);
+  if (p.returnedToBot) {
+    d.convs.addMessage(conv, 'system', `Admin tidak membalas lebih dari ${p.returnedToBot} menit. Bot aktif kembali untuk percakapan ini.`, now);
+    conv.needsAttention = false;
+    conv.attentionReason = null;
+    conv.attentionAt = null;
+  }
   if (p.attention) setAttention(d, conv, p.attention.reason, now);
 
   // Kirim berurutan; gagal -> berhenti tanpa commit.
