@@ -18,7 +18,6 @@ const { handle } = await import('../src/api/crm.js');
 
 const ADMIN = { name: 'Rina', role: 'admin' };
 const AGENT = { name: 'Budi', role: 'agent' };
-const DAY = 864e5;
 
 async function call(method, urlPath, { body, user = ADMIN, headers = {} } = {}) {
   const audits = [];

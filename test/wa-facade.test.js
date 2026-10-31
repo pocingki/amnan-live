@@ -37,7 +37,7 @@ function setup(over = {}) {
   const f = createWhatsApp(deps);
   return { f, log, connOpts };
 }
-const msg = (o = {}) => ({ key: { remoteJid: '62811@s.whatsapp.net', id: 'W1', fromMe: false, ...(o.key || {}) }, messageTimestamp: 100, pushName: 'Budi', ...o, key: { remoteJid: '62811@s.whatsapp.net', id: 'W1', fromMe: false, ...(o.key || {}) } });
+const msg = (o = {}) => ({ messageTimestamp: 100, pushName: 'Budi', ...o, key: { remoteJid: '62811@s.whatsapp.net', id: 'W1', fromMe: false, ...(o.key || {}) } });
 
 // 1. grup/broadcast/status/newsletter dilewati; jid kosong dilewati
 {

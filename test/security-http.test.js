@@ -41,13 +41,16 @@ const freePort = () =>
     });
   });
 
+// Windows tidak punya sinyal POSIX: kill('SIGTERM'/'SIGINT') mematikan paksa (kode keluar null). Shutdown rapi diuji hanya di Linux/macOS.
+const WIN = process.platform === 'win32';
+
 const CLEAN_ENV = ['TRUST_PROXY', 'ALLOW_NO_AUTH', 'DASHBOARD_PASSWORD', 'DASHBOARD_PASSWORD_HASH', 'DASHBOARD_USER', 'DATA_DIR', 'APP_DIR', 'LOGIN_MAX_FAILS', 'LOGIN_LOCK_BASE_SEC', 'LOGIN_LOCK_MAX_SEC'];
 
 /** Akar aplikasi sementara: public/config disalin lewat symlink, data/ dibuat server sendiri. */
 function makeApp() {
   const dir = tmp('amnan-sec-app-');
-  fs.symlinkSync(path.join(REPO, 'public'), path.join(dir, 'public'));
-  fs.symlinkSync(path.join(REPO, 'config'), path.join(dir, 'config'));
+  fs.symlinkSync(path.join(REPO, 'public'), path.join(dir, 'public'), 'junction'); // 'junction': tanpa hak admin di Windows
+  fs.symlinkSync(path.join(REPO, 'config'), path.join(dir, 'config'), 'junction');
   fs.copyFileSync(path.join(REPO, 'package.json'), path.join(dir, 'package.json'));
   return dir;
 }
@@ -503,8 +506,10 @@ test('sesi bertahan setelah server restart; token tidak tersimpan mentah', async
   const s = await session(S);
   assert.equal((await call(S, '/api/me', { cookie: s.cookie })).status, 200);
   const code = await stop(S);
-  assert.equal(code.code, 0, 'shutdown SIGTERM harus keluar bersih');
-  assert.match(S.log, /berhenti \(SIGTERM\)/);
+  if (!WIN) {
+    assert.equal(code.code, 0, 'shutdown SIGTERM harus keluar bersih');
+    assert.match(S.log, /berhenti \(SIGTERM\)/);
+  }
 
   const disk = fs.readFileSync(path.join(app, 'data', 'sessions.json'), 'utf8');
   assert.ok(!disk.includes(s.jar.session), 'token sesi mentah tidak boleh ada di sessions.json');
@@ -618,6 +623,8 @@ test('unhandledRejection: dicatat lalu proses keluar rapi (kode 1); SIGINT kelua
 
   const T = await start();
   const code = await stop(T, 'SIGINT');
-  assert.equal(code.code, 0);
-  assert.match(T.log, /berhenti \(SIGINT\)/);
+  if (!WIN) {
+    assert.equal(code.code, 0);
+    assert.match(T.log, /berhenti \(SIGINT\)/);
+  }
 });

@@ -19,6 +19,10 @@ const browserGlobals = {
   CustomEvent: 'readonly', Event: 'readonly', HTMLElement: 'readonly', TextEncoder: 'readonly', TextDecoder: 'readonly',
   alert: 'readonly', confirm: 'readonly', prompt: 'readonly', getComputedStyle: 'readonly', matchMedia: 'readonly',
   atob: 'readonly', btoa: 'readonly', crypto: 'readonly', performance: 'readonly', MediaRecorder: 'readonly',
+  addEventListener: 'readonly', removeEventListener: 'readonly', dispatchEvent: 'readonly',
+  innerWidth: 'readonly', innerHeight: 'readonly', scrollTo: 'readonly', open: 'readonly', CSS: 'readonly',
+  DOMParser: 'readonly', Node: 'readonly', Element: 'readonly', KeyboardEvent: 'readonly', MouseEvent: 'readonly',
+  File: 'readonly', DataTransfer: 'readonly', requestIdleCallback: 'readonly', screen: 'readonly',
 };
 
 const rules = {

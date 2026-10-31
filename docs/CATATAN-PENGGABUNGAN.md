@@ -21,3 +21,10 @@ Hasil audit (A1-A6) digabung ke struktur `amnan-live-main`.
 - Jalankan `npm install` lalu commit `package-lock.json` (lockfile lama belum memuat better-sqlite3, tailwindcss, eslint). Pastikan `@whiskeysockets/baileys` tetap `7.0.0-rc14`.
 - `npm run build:css` sebelum `npm start`.
 - Belum terverifikasi di sini: `npm run lint`, build Tailwind, Docker, dan koneksi WhatsApp sungguhan (tidak ada akses registry npm).
+
+## Perbaikan setelah uji di Windows (Node 24)
+- `test/security-http.test.js`: symlink diganti `junction` (symlink butuh hak admin di Windows).
+- `test/security-unit.test.js`: path dibaca dengan `fileURLToPath` (bukan `URL.pathname`, yang salah di `C:\`).
+- `eslint.config.js`: tambah global browser yang dipakai frontend (`addEventListener`, `innerWidth`, `CSS`, dll.).
+- `test/wa-facade.test.js`: kunci `key` ganda dihapus; `test/crm-api.test.js`: variabel `DAY` tak terpakai dihapus.
+- `test/security-http.test.js`: pemeriksaan shutdown SIGTERM/SIGINT dilewati di Windows (tidak ada sinyal POSIX; proses dimatikan paksa). Diuji penuh di Linux/CI.
