@@ -1,0 +1,25 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build:css
+      - run: npm test
+      # Temuan tingkat rendah/sedang pada dependensi pihak ketiga (mis. Baileys) tidak menggagalkan build;
+      # tingkat high ke atas menggagalkan.
+      - run: npm run audit -- --audit-level=high

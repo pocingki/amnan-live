@@ -49,16 +49,18 @@ a = ingest({ phone: '6281200000002', name: '', text: 'Mau tanya harga paket' });
 assert.equal(a.ignored, true);
 assert.equal(store.all().length, 1);
 
-// platform disebut di chat berikutnya (bukan pesan pertama) -> tidak jadi lead
+// platform disebut di chat berikutnya (bukan pesan pertama) -> tetap jadi lead (lead boleh dibuat di pesan mana pun)
 a = ingest({ phone: '6281200000002', name: 'Sari', text: 'Saya lihat dari TikTok', customerCount: 3 });
-assert.equal(a.ignored, true);
-assert.equal(store.all().length, 1);
+assert.equal(a.created, true);
+assert.equal(a.lead.messageCount, 3);
+assert.equal(store.all().length, 2);
 a = ingest({ phone: '6281200000003', name: 'Sari', text: 'Saya lihat dari TikTok' }); // pesan pertama
 assert.equal(a.created, true);
 assert.equal(a.lead.platform, 'TikTok');
-assert.equal(store.all().length, 2);
-const onDisk = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'leads.json'), 'utf8'));
-assert.equal(onDisk.length, 2);
+assert.equal(store.all().length, 3);
+store.flush();
+const { getDb } = await import('../src/db.js');
+assert.equal(getDb().prepare('SELECT COUNT(*) AS n FROM leads').get().n, 3);
 
 // aturan lain
 assert.equal(qualifies(detect('tanya harga'), 'keyword'), true);
@@ -76,7 +78,7 @@ assert.deepEqual(H('saya mau booking'), ['booking']);
 assert.deepEqual(H('sudah ditransfer ya'), ['transfer']); // imbuhan di-
 assert.deepEqual(H('ini bukti pembayarannya'), ['pembayaran']); // imbuhan -nya
 assert.deepEqual(H('cara bayar gimana'), ['bayar']);
-assert.ok(H('DP nya berapa').includes('dp'));
+assert.deepEqual(H('DP nya berapa'), []); // pertanyaan bukan sinyal Hot
 assert.deepEqual(H('belum transfer kak'), []); // negasi
 assert.deepEqual(H('tidak jadi booking'), []);
 assert.deepEqual(H('bunga ga transfer'), []);
@@ -90,48 +92,54 @@ const c1 = classify(null, m1);
 assert.equal(c1.lead.status, 'Cold Leads'); // pesan masuk pertama kali + keyword platform
 assert.equal(c1.lead.dataType, 'New');
 assert.equal(classify(null, { ...m1, text: 'mau booking' }).ignored, true); // tanpa platform bukan lead
-assert.equal(classify(null, { ...m1, customerCount: 2 }).ignored, true); // bukan pesan pertama kali
-// Hot langsung di pesan pertama (booking/transfer dst)
-const h1 = classify(null, { ...m1, text: 'dari Instagram, mau booking' });
+assert.equal(classify(null, { ...m1, customerCount: 2 }).created, true); // lead boleh dibuat di pesan ke-2 dst
+// Hot langsung di pesan pertama (sinyal pasti: sudah transfer dst); 'booking' saja hanya sinyal lemah
+assert.equal(classify(null, { ...m1, text: 'dari Instagram, mau booking' }).lead.status, 'Cold Leads');
+const h1 = classify(null, { ...m1, text: 'dari Instagram, sudah transfer' });
 assert.equal(h1.lead.status, 'Hot Leads');
 assert.equal(h1.lead.dataType, 'New');
 assert.equal(h1.lead.transactionCount, 1);
 
-// Cold -> Warm hanya jika pesan customer LEBIH dari 10 (jadi mulai pesan ke-11)
+// Cold -> Warm memakai skor (bukan lagi "lebih dari 10 pesan"): 11 pesan saja = 3 poin, tetap Cold
 let w = c1.lead;
-for (let n = 2; n <= 10; n++) {
+for (let n = 2; n <= 11; n++) {
   w = classify(w, { text: 'oke', ts: 1000 + n, customerCount: n }).lead;
   assert.equal(w.status, 'Cold Leads', 'pesan ke-' + n);
   assert.equal(w.dataType, 'New');
 }
-w = classify(w, { text: 'oke', ts: 2000, customerCount: 11 });
-assert.equal(w.lead.status, 'Warm Leads');
-assert.match(w.lead.statusReason, /lebih dari 10/);
+w = classify({ ...w, data: { nama: 'Budi', keluhan: 'pinggang' } }, { text: 'oke', ts: 2000, customerCount: 12 });
+assert.equal(w.lead.status, 'Warm Leads'); // 4 (pesan) + 2 (data) >= 5
+assert.match(w.lead.statusReason, /12 pesan dari customer/);
 // Hot di pesan lanjutan, tidak turun lagi
 let c4 = classify(w.lead, { text: 'saya transfer sekarang', ts: 3000, customerCount: 12 });
 assert.equal(c4.lead.status, 'Hot Leads');
 assert.equal(c4.lead.dataType, 'New'); // baru satu kali transaksi
 assert.equal(c4.lead.transactionCount, 1);
-// pesan lain dalam transaksi yang sama (di bawah 24 jam) tidak dihitung transaksi baru
+// pesan lain dalam transaksi yang sama tidak dihitung transaksi baru
 let c5 = classify(c4.lead, { text: 'ini bukti transfer', ts: 4000, customerCount: 13 });
 assert.equal(c5.lead.transactionCount, 1);
 assert.equal(c5.lead.dataType, 'New');
 assert.equal(classify(c5.lead, { text: 'terima kasih', ts: 5000, customerCount: 14 }).lead.status, 'Hot Leads');
-// chat biasa (tanpa sinyal transaksi) setelah jeda 24 jam: tetap New
+// chat biasa (tanpa sinyal transaksi) setelah jeda: tetap New
 assert.equal(classify(c5.lead, { text: 'halo kak', ts: 4000 + H24, customerCount: 15 }).lead.dataType, 'New');
-// transaksi kedua (>= 24 jam setelah yang pertama) -> Existing, permanen, tetap Hot
-let c6 = classify(c5.lead, { text: 'mau booking lagi', ts: 4000 + H24, customerCount: 15 });
+// sinyal lagi 24 jam kemudian masih siklus yang sama (siklus terbuka 30 hari) -> tetap New
+const c6a = classify(c5.lead, { text: 'mau booking lagi', ts: 4000 + H24, customerCount: 15 });
+assert.equal(c6a.lead.transactionCount, 1);
+assert.equal(c6a.lead.dataType, 'New');
+// sesudah siklus ditutup / lewat 30 hari -> siklus ke-2 -> Existing, permanen, tetap Hot
+let c6 = classify(c5.lead, { text: 'mau booking lagi', ts: 4000 + 31 * H24, customerCount: 15 });
 assert.equal(c6.lead.transactionCount, 2);
 assert.equal(c6.lead.dataType, 'Existing');
 assert.equal(c6.lead.status, 'Hot Leads');
 assert.match(c6.lead.dataReason, /transaksi ke-2/);
-assert.equal(classify(c6.lead, { text: 'halo', ts: 4000 + 2 * H24, customerCount: 16 }).lead.dataType, 'Existing');
+assert.equal(classify(c6.lead, { text: 'halo', ts: 4000 + 60 * H24, customerCount: 16 }).lead.dataType, 'Existing');
 // transaksi pertama saat Cold/Warm lalu kedua -> Existing juga; tapi tanpa transaksi pertama tidak Existing
 assert.equal(classify(c1.lead, { text: 'halo lagi', ts: 1000 + 3 * H24, customerCount: 2 }).lead.dataType, 'New');
 // lead lama berstatus Hot tanpa catatan transaksi dianggap sudah 1 transaksi
 const legacy = { ...c1.lead, status: 'Hot Leads', lastMessageAt: 1000 };
 delete legacy.transactionCount;
-assert.equal(classify(legacy, { text: 'transfer lagi', ts: 1000 + H24, customerCount: 5 }).lead.dataType, 'Existing');
+delete legacy.transactionCycles; // lead lama sungguhan tidak punya field siklus
+assert.equal(classify(legacy, { text: 'sudah transfer lagi', ts: 1000 + 31 * H24, customerCount: 5 }).lead.dataType, 'Existing');
 // Existing diubah manual lalu chat -> langsung Hot
 const ex = classify({ ...c1.lead, dataType: 'Existing', dataTypeManual: true }, { text: 'halo', ts: 2000, customerCount: 2 });
 assert.equal(ex.lead.status, 'Hot Leads');
@@ -139,9 +147,10 @@ assert.equal(ex.lead.status, 'Hot Leads');
 const ms = classify({ ...c1.lead, statusManual: true }, { text: 'booking', ts: 2000, customerCount: 5 });
 assert.equal(ms.lead.status, 'Cold Leads');
 assert.equal(ms.lead.transactionCount, 1);
-assert.equal(classify({ ...c5.lead, dataTypeManual: true }, { text: 'booking lagi', ts: 4000 + H24, customerCount: 15 }).lead.dataType, 'New');
+assert.equal(classify({ ...c5.lead, dataTypeManual: true }, { text: 'booking lagi', ts: 4000 + 31 * H24, customerCount: 15 }).lead.dataType, 'New');
 // konfigurasi bisa ditimpa
-const cfg = { ...JSON.parse(fs.readFileSync('config/keywords.json', 'utf8')), warmAfterMessages: 1 };
+const { warmScore: _ws, ...kwOld } = JSON.parse(fs.readFileSync('config/keywords.json', 'utf8'));
+const cfg = { ...kwOld, warmAfterMessages: 1 }; // tanpa warmScore -> fallback warmAfterMessages
 assert.equal(classify(c1.lead, { text: 'oke', ts: 2000, customerCount: 2 }, cfg).lead.status, 'Warm Leads');
 
 // bawaan produksi (leadRule all): pesan pertama tanpa keyword apa pun langsung Cold; bukan pesan pertama tetap tidak
@@ -149,6 +158,6 @@ assert.equal(kw.leadRule, 'all');
 const al = classify(null, { text: 'Halo kak', phone: '9', ts: 1000, customerCount: 1 }, kw);
 assert.equal(al.lead.status, 'Cold Leads');
 assert.equal(al.lead.platform, 'Lainnya');
-assert.equal(classify(null, { text: 'Halo kak', ts: 1000, customerCount: 2 }, kw).ignored, true);
+assert.equal(classify(null, { text: 'Halo kak', ts: 1000, customerCount: 2 }, kw).created, true); // pesan ke-2 pun boleh jadi lead
 
 console.log('Semua uji lolos');

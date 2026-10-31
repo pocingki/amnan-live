@@ -6,62 +6,61 @@
     <title>acesio - Lead Tracker Gateway</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="icon" href="favicon.ico" sizes="any">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        // Palet warna brand acesio (biru tua #083284, biru muda #75c5f5 dari logo)
-        if (window.tailwind) tailwind.config = { theme: { extend: { colors: { brand: {
-            50: '#eef7fe', 100: '#d9eefc', 200: '#b5defa', 300: '#75c5f5', 400: '#3f9fe6',
-            500: '#1d6fcf', 600: '#0f50b0', 700: '#0b3f98', 800: '#083284', 900: '#062567'
-        } } } } };
-    </script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <!-- CSP (K3): tanpa script inline, tanpa CDN. Tailwind dibangun ke assets/css/tailwind.css (palet brand K8). -->
+    <link rel="stylesheet" href="/assets/css/tailwind.css">
+    <link rel="stylesheet" href="/assets/css/style.css">
 </head>
 <body class="bg-white text-gray-800 font-sans min-h-screen flex flex-col">
+    <a href="#view" class="skip-link" id="skip-link">Lewati ke konten utama</a>
+    <noscript><p class="p-4 text-center text-red-700">Dashboard ini membutuhkan JavaScript. Aktifkan JavaScript di browser Anda.</p></noscript>
 
-    <!-- LOGO BRAND | MENU (TENGAH) | AKUN (KANAN ATAS) -->
+    <!-- LOGO BRAND | MENU (TENGAH) | STATUS WA + NOTIFIKASI + AKUN (KANAN ATAS) -->
     <header class="bg-white border-t-4 border-brand-800 border-b border-b-gray-200 sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-[auto_1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center gap-x-3 py-2 md:py-0 md:h-16">
 
-                <a href="#/crm" class="flex items-center gap-3 shrink-0">
-                    <!-- Taruh logo resmi di public/assets/img/logo.png; jika belum ada, tampil logo bawaan -->
-                    <img src="assets/img/logo.png" alt="Logo" class="h-9 w-auto object-contain" style="display:none"
-                         onload="this.style.display='block';document.getElementById('brand-mark').style.display='none'">
+                <a href="#/crm" class="flex items-center gap-3 shrink-0" aria-label="acesio, ke halaman CRM" id="brand-link">
+                    <!-- Taruh logo resmi di public/assets/img/logo.png; jika belum ada, tampil logo bawaan (diatur app.js) -->
+                    <img id="brand-logo" src="" alt="" class="h-9 w-auto object-contain" hidden>
                     <img id="brand-mark" src="favicon.svg" alt="" class="h-9 w-9">
                     <div class="leading-tight">
                         <div id="brand-name" class="text-xl font-extrabold tracking-tight text-brand-800">acesio</div>
-                        <div id="brand-tagline" class="hidden lg:block text-[11px] text-gray-500">Physiotherapy Rehab &amp; Sport Recovery Rehab</div>
+                        <div id="brand-tagline" class="hidden lg:block text-[11px] text-gray-600">Physiotherapy Rehab &amp; Sport Recovery Rehab</div>
                     </div>
                 </a>
 
-                <nav id="nav" class="order-last col-span-3 md:order-none md:col-span-1 flex items-center justify-center gap-1 overflow-x-auto text-sm font-medium">
+                <nav id="nav" aria-label="Menu utama" class="order-last col-span-3 md:order-none md:col-span-1 flex items-center justify-center gap-1 overflow-x-auto text-sm font-medium">
                     <a href="#/pesan" data-r="/pesan" class="nav-link">Pesan</a>
-                    <a href="#/percakapan" data-r="/percakapan" class="nav-link">Percakapan Masuk<span class="nav-unread nav-badge" style="display:none"></span></a>
+                    <a href="#/percakapan" data-r="/percakapan" class="nav-link">Percakapan Masuk<span class="nav-unread nav-badge" hidden></span></a>
                     <a href="#/crm" data-r="/crm" class="nav-link">CRM</a>
                     <a href="#/bot-tester" data-r="/bot-tester" class="nav-link">Bot Tester</a>
                     <a href="#/pengaturan" data-r="/pengaturan" class="nav-link">Pengaturan</a>
                 </nav>
 
-                <div class="flex items-center justify-end gap-3">
-                    <div id="wa-badge" class="hidden md:flex shrink-0 items-center space-x-2 text-sm bg-red-50 text-red-700 px-3 py-1.5 rounded-full font-medium border border-red-200">
-                        <span id="wa-dot" class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                        <span id="wa-text">Status Koneksi WA Terputus</span>
+                <div class="flex items-center justify-end gap-2 sm:gap-3">
+                    <!-- Status WA: terlihat juga di HP. Status = ikon + teks (bukan hanya warna). -->
+                    <div id="wa-badge" class="wa-badge wa-warn" role="status" aria-label="Status WhatsApp: memeriksa">
+                        <span id="wa-icon" aria-hidden="true"></span>
+                        <span id="wa-long" class="wa-long" aria-hidden="true">Memeriksa status WA…</span>
+                        <span id="wa-short" class="wa-short" aria-hidden="true">WA…</span>
                     </div>
+
+                    <button id="bell-btn" type="button" class="icon-btn" aria-label="Pengaturan notifikasi" title="Notifikasi" aria-haspopup="menu" aria-expanded="false"></button>
 
                     <!-- Akun: lingkaran di pojok kanan atas -->
                     <div class="relative">
-                        <button id="avatar-btn" type="button" aria-label="Akun" title="Akun"
+                        <button id="avatar-btn" type="button" aria-label="Akun" title="Akun" aria-haspopup="true" aria-expanded="false" aria-controls="avatar-menu"
                                 class="h-10 w-10 rounded-full bg-brand-800 text-white flex items-center justify-center ring-2 ring-brand-100 hover:bg-brand-900">
-                            <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
+                            <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>
                         </button>
-                        <div id="avatar-menu" class="hidden absolute right-0 mt-2 w-60 bg-white border border-gray-200 rounded-xl shadow-lg py-1 z-50 text-sm">
+                        <div id="avatar-menu" class="avatar-menu" hidden>
                             <div class="px-4 py-3 border-b border-gray-100">
-                                <div class="text-xs text-gray-500">Masuk sebagai</div>
-                                <div id="me-name" class="font-semibold text-brand-800 truncate">admin</div>
+                                <div class="text-xs text-gray-600">Masuk sebagai</div>
+                                <div id="me-name" class="font-semibold text-brand-800 truncate">…</div>
+                                <div class="text-xs text-gray-600 mt-0.5">Peran: <span id="me-role">…</span></div>
                             </div>
                             <a href="/login" class="block px-4 py-2 hover:bg-brand-50">Masuk (ganti akun)</a>
-                            <button id="btn-signout" type="button" class="block w-full text-left px-4 py-2 text-red-600 hover:bg-red-50">Keluar</button>
+                            <button id="btn-signout" type="button" class="block w-full text-left px-4 py-2 text-red-700 hover:bg-red-50">Keluar</button>
                         </div>
                     </div>
                 </div>
@@ -69,12 +68,15 @@
         </div>
     </header>
 
-    <main id="view" class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"></main>
+    <main id="view" tabindex="-1" class="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8" aria-live="off"></main>
 
     <!-- FOOTER -->
-    <footer class="border-t border-gray-200 bg-white py-4 text-center text-xs text-gray-500">
+    <footer class="border-t border-gray-200 bg-white py-4 text-center text-xs text-gray-600">
         &copy; <span id="year"></span> <span id="foot-brand" class="font-semibold text-brand-800">acesio</span> &middot; Lead Tracker Gateway
     </footer>
+
+    <div id="toast-host" class="toast-host" aria-live="polite"></div>
+    <div id="route-announcer" class="sr-only" role="status" aria-live="polite"></div>
 
     <script type="module" src="assets/js/app.js"></script>
 </body>

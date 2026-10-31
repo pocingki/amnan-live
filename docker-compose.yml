@@ -1,0 +1,26 @@
+# Jalankan:  docker compose up -d --build
+# Siapkan .env dulu (cp .env.example .env). DATA_DIR di dalam kontainer sudah /data.
+services:
+  amnan:
+    build: .
+    image: amnan-live:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      PORT: "8080"
+    # Hanya dibuka ke localhost; akses publik lewat reverse proxy / tunnel (set TRUST_PROXY=1 di .env).
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - amnan-data:/data
+    stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  amnan-data:

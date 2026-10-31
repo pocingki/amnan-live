@@ -1,188 +1,133 @@
-// Koneksi WhatsApp (Baileys): login via QR, dengar pesan masuk, teruskan ke leads.
-import fs from 'node:fs';
-import path from 'node:path';
-import { handleIncoming } from './bot.js';
+// Fasad WhatsApp: merangkai koneksi, pengirim, ekstraksi pesan, identitas, media, dan bot.
+// Membuat instans TIDAK memulai koneksi dan tidak memuat Baileys (dimuat lazy di BaileysAdapter).
+import { createConnection as realCreateConnection } from './wa-connection.js';
+import * as waSend from './wa-send.js';
+import * as waMessage from './wa-message.js';
+import * as waIdentity from './wa-identity.js';
+import * as mediaMod from './media.js';
+import * as convsMod from './conversations.js';
+import * as settingsMod from './settings.js';
+import * as botMod from './bot.js';
+import * as eventsMod from './events.js';
 
-const AUTH_DIR = path.resolve(process.env.DATA_DIR || 'data', 'auth');
+const IGNORED_JID = /@(g\.us|broadcast|newsletter)$/;
 
-export const wa = {
-  status: 'disconnected', // disconnected | connecting | qr | connected
-  qr: null, // data URL gambar QR
-  number: null,
-  error: null,
+const withTimeout = (promise, ms, label) => {
+  let t;
+  const timeout = new Promise((_, rej) => { t = setTimeout(() => rej(new Error(label)), ms); });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(t));
 };
 
-let sock = null;
-const seen = new Set(); // id pesan yang sudah diproses (cegah balasan ganda)
-let starting = false;
-let libs = null;
+export function createWhatsApp(deps = {}) {
+  const createConnection = deps.createConnection || realCreateConnection;
+  const extractMessage = deps.extractMessage || ((r) => waMessage.extractMessage(r));
+  const resolveIdentity = deps.resolveIdentity || ((k, o) => waIdentity.resolveIdentity(k, o));
+  const saveMedia = deps.saveMedia || ((b, o) => mediaMod.saveMedia(b, o));
+  const convs = deps.convs || { seenMessage: (id) => convsMod.seenMessage(id), markSeen: (id) => convsMod.markSeen(id) };
+  const handleIncoming = deps.handleIncoming || ((m, s) => botMod.handleIncoming(m, s));
+  const onStatusUpdate = deps.onStatusUpdate || ((u) => botMod.onStatusUpdate(u));
+  const emit = deps.emit || ((t, p) => eventsMod.emit(t, p));
+  const now = deps.now || Date.now;
+  const mediaTimeoutMs = deps.mediaTimeoutMs ?? 20000;
 
-async function loadLibs() {
-  if (libs) return libs;
-  const [baileys, qrcode, pino] = await Promise.all([
-    import('@whiskeysockets/baileys'),
-    import('qrcode'),
-    import('pino'),
-  ]);
-  // Baileys bisa diekspor sebagai CJS atau ESM tergantung versi
-  const b = baileys.useMultiFileAuthState ? baileys : baileys.default;
-  const makeWASocket = typeof baileys.default === 'function' ? baileys.default : b.default || b.makeWASocket;
-  libs = {
-    makeWASocket,
-    useMultiFileAuthState: b.useMultiFileAuthState,
-    DisconnectReason: b.DisconnectReason,
-    fetchLatestBaileysVersion: b.fetchLatestBaileysVersion,
-    Browsers: b.Browsers,
-    QRCode: qrcode.default || qrcode,
-    pino: pino.default || pino,
-  };
-  return libs;
-}
-
-function unwrap(message) {
-  if (!message) return null;
-  return (
-    message.ephemeralMessage?.message ||
-    message.viewOnceMessage?.message ||
-    message.documentWithCaptionMessage?.message ||
-    message
-  );
-}
-
-function extractText(m) {
-  const msg = unwrap(m.message);
-  if (!msg) return null;
-  return (
-    msg.conversation ||
-    msg.extendedTextMessage?.text ||
-    msg.imageMessage?.caption ||
-    msg.videoMessage?.caption ||
-    msg.buttonsResponseMessage?.selectedDisplayText ||
-    msg.listResponseMessage?.title ||
-    '[pesan non-teks]'
-  );
-}
-
-function handleMessage(m) {
-  const key = m.key || {};
-  const jid = key.remoteJid || '';
-  if (key.fromMe) return;
-  if (key.id) {
-    if (seen.has(key.id)) return;
-    seen.add(key.id);
-    if (seen.size > 500) seen.delete(seen.values().next().value);
-  }
-  if (!jid || jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid.endsWith('@newsletter')) return;
-
-  const text = extractText(m);
-  if (!text) return;
-
-  // Versi baru WhatsApp kadang memakai @lid; nomor asli ada di remoteJidAlt bila tersedia
-  const realJid = jid.endsWith('@lid') && key.remoteJidAlt ? key.remoteJidAlt : jid;
-  const phone = realJid.split('@')[0].split(':')[0];
-  const ts = m.messageTimestamp ? Number(m.messageTimestamp) * 1000 : Date.now();
-
-  handleIncoming({ jid, phone, name: m.pushName || '', text, ts }, sendText).catch((e) => console.error('[bot]', e));
-}
-
-export async function start() {
-  if (starting) return;
-  starting = true;
-  try {
-    const L = await loadLibs();
-    wa.status = 'connecting';
-    wa.error = null;
-
-    const { state, saveCreds } = await L.useMultiFileAuthState(AUTH_DIR);
-    const { version } = await L.fetchLatestBaileysVersion();
-
-    sock = L.makeWASocket({
-      version,
-      auth: state,
-      logger: L.pino({ level: 'silent' }),
-      browser: L.Browsers.macOS('Amnan SaaS'),
-      markOnlineOnConnect: false,
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('connection.update', async (u) => {
-      const { connection, lastDisconnect, qr } = u;
-
-      if (qr) {
-        wa.qr = await L.QRCode.toDataURL(qr, { width: 300, margin: 1 });
-        wa.status = 'qr';
-      }
-
-      if (connection === 'open') {
-        wa.status = 'connected';
-        wa.qr = null;
-        wa.number = (sock.user?.id || '').split(':')[0].split('@')[0] || null;
-        console.log('[wa] terhubung sebagai', wa.number);
-      }
-
-      if (connection === 'close') {
-        const code = lastDisconnect?.error?.output?.statusCode;
-        wa.qr = null;
-        if (code === L.DisconnectReason.loggedOut) {
-          console.log('[wa] logout dari HP, sesi dihapus');
-          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-          wa.status = 'disconnected';
-          wa.number = null;
-          setTimeout(() => start().catch(console.error), 1500);
-        } else {
-          console.log('[wa] koneksi putus (kode', code + '), mencoba lagi...');
-          wa.status = 'connecting';
-          setTimeout(() => start().catch(console.error), 2000);
+  const connection =
+    deps.connection ||
+    createConnection({
+      onStatus: (w) => emit('wa:status', { status: w.status, number: w.number }),
+      onMessages: async (raws) => { for (const r of raws || []) await handleMessage(r); }, // berurutan
+      onReceipts: (list) => {
+        for (const u of list || []) {
+          try { Promise.resolve(onStatusUpdate(u)).catch((e) => console.error('[wa] receipt gagal:', e)); }
+          catch (e) { console.error('[wa] receipt gagal:', e); }
         }
-      }
+      },
     });
 
-    sock.ev.on('messages.upsert', ({ messages, type }) => {
-      if (type !== 'notify') return;
-      for (const m of messages) {
-        try {
-          handleMessage(m);
-        } catch (err) {
-          console.error('[wa] gagal memproses pesan:', err);
-        }
-      }
-    });
-  } catch (err) {
-    wa.status = 'disconnected';
-    wa.error = err.message;
-    console.error('[wa] gagal start:', err);
-  } finally {
-    starting = false;
-  }
-}
+  const getAdapter = () => connection.adapter();
 
-/** Putuskan tautan perangkat dan buat QR baru. */
-export async function logout() {
-  if (sock && wa.status === 'connected') {
-    // Event 'close' (loggedOut) akan menghapus sesi dan memulai ulang untuk QR baru
+  const sender =
+    deps.sender ||
+    waSend.createSender({
+      transport: {
+        sendText: (j, t) => connection.adapter().sendText(j, t),
+        sendPresence: (j, s) => connection.adapter().sendPresence(j, s),
+        isConnected: () => connection.wa.status === 'connected',
+      },
+      getSettings: () => settingsMod.get(),
+    });
+
+  const sendText = (jid, text) => sender.sendText(jid, text);
+
+  async function handleMessage(raw) {
     try {
-      await sock.logout();
-      return;
-    } catch {
-      /* lanjut ke reset manual */
+      const key = raw?.key || {};
+      const rjid = key.remoteJid || '';
+      if (!rjid || IGNORED_JID.test(rjid)) return; // grup, broadcast, status, newsletter
+      const waId = key.id || null;
+      const fromMe = !!key.fromMe;
+      if (fromMe && waId && sender.wasSentBySystem(waId)) return; // gema pesan sistem
+      if (waId) {
+        if (convs.seenMessage(waId)) return;
+        convs.markSeen(waId);
+      }
+
+      const ext = extractMessage(raw);
+      if (!ext) return;
+      if (fromMe && (ext.kind === 'reaction' || ext.kind === 'system')) return;
+
+      const id = await resolveIdentity(
+        { remoteJid: key.remoteJid, remoteJidAlt: key.remoteJidAlt, participant: key.participant, participantAlt: key.participantAlt },
+        { lidToPhone: (l) => getAdapter()?.lidToPhone(l) },
+      );
+      const sec = Number(raw.messageTimestamp);
+      const ts = sec > 0 ? sec * 1000 : now();
+
+      let mediaId = null;
+      let mediaError = null;
+      if (ext.hasMedia) {
+        try {
+          const buf = await withTimeout(Promise.resolve().then(() => getAdapter().downloadMedia(raw)), mediaTimeoutMs, 'Unduh media melewati batas waktu');
+          ({ mediaId } = await saveMedia(buf, { mime: ext.mime, kind: ext.kind, name: ext.fileName }));
+        } catch (e) {
+          mediaId = null;
+          mediaError = e?.message || String(e);
+        }
+      }
+
+      if (ext.kind === 'text' && !String(ext.text || '').trim()) return;
+
+      const envelope = {
+        waId,
+        jid: id.jid || rjid,
+        phone: id.phone || null,
+        lid: id.lid || null,
+        name: raw.pushName || '',
+        ts,
+        kind: ext.kind,
+        text: ext.text || '',
+        caption: ext.caption || '',
+        mediaId,
+        mediaError,
+        fromMe,
+        fromPhone: fromMe,
+        source: { platform: '', adId: '', ctwaClid: '', sourceUrl: '', referralCode: '', ...(ext.source || {}) },
+      };
+      await Promise.resolve(handleIncoming(envelope, sendText)).catch((e) => console.error('[bot]', e));
+    } catch (err) {
+      console.error('[wa] gagal memproses pesan:', err);
     }
   }
-  try {
-    sock?.end?.(undefined);
-  } catch {
-    /* abaikan */
-  }
-  fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-  wa.status = 'disconnected';
-  wa.qr = null;
-  wa.number = null;
-  setTimeout(() => start().catch(console.error), 1000);
+
+  return {
+    wa: connection.wa,
+    start: () => connection.start(),
+    stop: () => connection.stop(),
+    logout: () => connection.logout(),
+    sendText,
+    handleMessage,
+    getAdapter,
+  };
 }
 
-export async function sendText(jid, text) {
-  if (!sock || wa.status !== 'connected') throw new Error('WhatsApp belum terhubung');
-  await sock.sendMessage(jid, { text });
-}
-
-export { handleMessage };
+const inst = createWhatsApp();
+export const { wa, start, stop, logout, sendText, handleMessage, getAdapter } = inst;
