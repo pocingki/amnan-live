@@ -14,6 +14,8 @@ Dashboard CRM dan bot balasan otomatis WhatsApp untuk klinik fisioterapi **acesi
 
 Butuh Node.js 20 atau 22. Perintah berikut berurutan dan dijalankan dari folder proyek:
 
+git clone git@github.com:pocingki/amnan-live.git
+
 ```bash
 npm install                 # memasang semua dependensi (termasuk Tailwind & ESLint untuk build)
 npm run build:css           # membangun public/assets/css/tailwind.css (WAJIB sebelum pertama kali start)
