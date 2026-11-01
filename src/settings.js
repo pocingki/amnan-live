@@ -2,6 +2,7 @@
 // Versi + riwayat (maks 20) untuk deteksi konflik dan pemulihan.
 import { randomBytes } from 'node:crypto';
 import { load, save } from './jsonfile.js';
+import { normalizeHex, checkBase } from '../public/assets/js/brand-color.js';
 
 const OPENING_LAMA = 'Halo {nama}, selamat datang. Saya {bot}, asisten virtual yang membantu {admin}. Ada yang bisa kami bantu?';
 const MASK = '••••';
@@ -9,8 +10,12 @@ const HISTORY_MAX = 20;
 const FIELD_TYPES = ['text', 'name', 'phone', 'date', 'choice'];
 
 export const DEFAULTS = {
-  brandName: 'acesio',
-  brandTagline: 'Physiotherapy Rehab & Sport Recovery Rehab',
+  // Nama/tagline awal untuk instance baru: diisi dari .env (BRAND_NAME, BRAND_TAGLINE). Setelah
+  // pengaturan tersimpan, nilai di data/settings.json yang dipakai dan bisa diubah dari dashboard.
+  brandName: String(process.env.BRAND_NAME ?? '').trim().slice(0, 60) || 'Amnan',
+  brandTagline: String(process.env.BRAND_TAGLINE ?? '').trim().slice(0, 100),
+  // Warna utama brand (#RRGGBB). Kosong = palet biru bawaan. Dari .env: BRAND_COLOR (hanya nilai awal).
+  brandColor: normalizeHex(process.env.BRAND_COLOR) && !checkBase(process.env.BRAND_COLOR) ? normalizeHex(process.env.BRAND_COLOR) : '',
   botEnabled: true,
   botName: 'Asisten Virtual',
   adminName: 'Admin',
@@ -32,8 +37,8 @@ export const DEFAULTS = {
     { id: 'harga', name: 'Tanya harga', keywords: ['harga', 'biaya', 'tarif'], response: 'Untuk informasi harga, {admin} akan mengirimkan rinciannya. Mohon tunggu sebentar.', active: true, priority: 0 },
     { id: 'terima-kasih', name: 'Terima kasih', keywords: ['terima kasih', 'makasih', 'thanks'], response: 'Sama-sama. Kami siap membantu kapan saja.', active: true, priority: 0 },
     // Contoh nonaktif: isi respons lalu aktifkan.
-    { id: 'jadwal', name: 'Jadwal & jam buka', keywords: ['jadwal', 'jam buka', 'jam operasional'], response: '[ISI: jadwal dan jam buka klinik]', active: false, example: true, priority: 0 },
-    { id: 'lokasi', name: 'Lokasi', keywords: ['lokasi', 'alamat', 'dimana', 'di mana'], response: '[ISI: alamat dan petunjuk arah klinik]', active: false, example: true, priority: 0 },
+    { id: 'jadwal', name: 'Jadwal & jam buka', keywords: ['jadwal', 'jam buka', 'jam operasional'], response: '[ISI: jadwal dan jam buka]', active: false, example: true, priority: 0 },
+    { id: 'lokasi', name: 'Lokasi', keywords: ['lokasi', 'alamat', 'dimana', 'di mana'], response: '[ISI: alamat dan petunjuk arah]', active: false, example: true, priority: 0 },
     { id: 'layanan', name: 'Layanan', keywords: ['layanan', 'treatment', 'terapi'], response: '[ISI: daftar layanan yang tersedia]', active: false, example: true, priority: 0 },
     { id: 'cara-booking', name: 'Cara booking', keywords: ['booking', 'reservasi', 'daftar', 'janji'], response: '[ISI: langkah membuat janji/booking]', active: false, example: true, priority: 0 },
   ],
@@ -127,6 +132,15 @@ function checkWebhook(v) {
 function clean(p, base) {
   const o = {};
   for (const [k, max] of [['brandName', 60], ['brandTagline', 100], ['botName', 60], ['adminName', 60]]) if (k in p) o[k] = str(p[k], max) || DEFAULTS[k];
+  if ('brandColor' in p) {
+    const raw = str(p.brandColor, 20);
+    if (raw === '') o.brandColor = '';
+    else {
+      const bad = checkBase(raw);
+      if (bad) throw err('VALIDATION', bad);
+      o.brandColor = normalizeHex(raw);
+    }
+  }
   for (const k of ['openingMessage', 'fallbackMessage', 'handoverMessage', 'completionMessage']) if (k in p) o[k] = str(p[k], 2000);
   for (const k of ['botEnabled', 'autoTakeoverOnPhoneReply']) if (k in p) o[k] = !!p[k];
   for (const [k, min, max] of [['botDurationMinutes', 0, 10080], ['adminAutoReturnMinutes', 0, 10080], ['staleMinutes', 1, 1440], ['fallbackCooldownMinutes', 0, 1440], ['sendRateLimitPerMinute', 1, 120], ['maxMediaMB', 1, 64], ['retentionDays', 0, 3650]]) {

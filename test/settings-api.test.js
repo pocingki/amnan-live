@@ -67,7 +67,7 @@ const first = r.body[0].version;
 r = await call('POST', '/api/settings/restore', { body: { version: first } });
 assert.equal(r.code, 200);
 assert.equal(r.body.version, s.get().version);
-assert.equal(r.body.brandName, 'acesio');
+assert.equal(r.body.brandName, s.DEFAULTS.brandName);
 
 // 6. jalur lain -> false
 assert.equal((await call('GET', '/api/lain')).handled, false);

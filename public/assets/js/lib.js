@@ -521,8 +521,8 @@ function bindVisibility() {
 
 const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* abaikan */ } };
-export const soundOn = () => lsGet('acesio:sound') !== '0';
-export const setSound = (on) => lsSet('acesio:sound', on ? '1' : '0');
+export const soundOn = () => lsGet('amnan:sound') !== '0';
+export const setSound = (on) => lsSet('amnan:sound', on ? '1' : '0');
 
 let actx = null;
 /** Panggil dari gestur pengguna (klik/ketik) agar browser mengizinkan bunyi. */

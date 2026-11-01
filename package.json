@@ -2,7 +2,7 @@
   "name": "amnan-live",
   "version": "0.2.0",
   "private": true,
-  "description": "Amnan SaaS - dashboard CRM + bot balas otomatis WhatsApp (Baileys) untuk klinik fisioterapi acesio",
+  "description": "Amnan SaaS - dashboard CRM + bot balas otomatis WhatsApp (Baileys) dengan satu instance per client",
   "type": "module",
   "main": "server.js",
   "scripts": {

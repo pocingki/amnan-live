@@ -54,7 +54,7 @@ const isWrite = (method) => !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperC
 
 /**
  * Kebijakan peran terpusat: endpoint yang DILARANG untuk peran 'agent' (ubah pengaturan,
- * hapus lead/percakapan/pesan, logout WA, hapus data pelanggan, kelola pengguna, baca audit).
+ * hapus lead/percakapan/pesan, logout WA, hapus data pelanggan, ubah logo/favicon, kelola pengguna, baca audit).
  * Dicek di dispatcher supaya tetap berlaku walau sebuah modul lupa memanggil ctx.requireRole.
  */
 export function adminOnly(method, pathname) {
@@ -63,6 +63,7 @@ export function adminOnly(method, pathname) {
   if (p === '/api/users' || p.startsWith('/api/users/') || p === '/api/audit') return true;
   if (isWrite(m) && (p === '/api/settings' || p.startsWith('/api/settings/'))) return true;
   if (isWrite(m) && (p === '/api/data' || p.startsWith('/api/data/'))) return true;
+  if (isWrite(m) && (p === '/api/brand' || p.startsWith('/api/brand/'))) return true; // logo/favicon
   if (m === 'DELETE' && /^\/api\/leads\/[^/]+$/.test(p)) return true;
   if (m === 'DELETE' && /^\/api\/conversations\/[^/]+$/.test(p)) return true;
   if (m === 'POST' && /^\/api\/conversations\/[^/]+\/delete-messages$/.test(p)) return true;

@@ -27,7 +27,7 @@ const code = (c) => (e) => e.code === c;
   assert.equal(r.updatedBy, 'budi');
   assert.deepEqual(s.history().map((h) => h.version), [1]);
   const raw = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'settings.history.json'), 'utf8'));
-  assert.equal(raw[0].settings.brandName, 'acesio');
+  assert.equal(raw[0].settings.brandName, s.DEFAULTS.brandName);
 }
 
 // 3. riwayat maks 20 (menyimpan yang terbaru)

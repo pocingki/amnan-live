@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>acesio - Lead Tracker Gateway</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="icon" href="favicon.ico" sizes="any">
+    <title>Lead Tracker Gateway</title>
+    <link id="brand-icon" rel="icon" href="/brand/favicon">
     <!-- CSP (K3): tanpa script inline, tanpa CDN. Tailwind dibangun ke assets/css/tailwind.css (palet brand K8). -->
     <link rel="stylesheet" href="/assets/css/tailwind.css">
     <link rel="stylesheet" href="/assets/css/style.css">
+    <!-- Warna brand per client (menimpa variabel warna di atas); diubah dari Pengaturan -->
+    <link id="brand-css" rel="stylesheet" href="/brand.css">
 </head>
 <body class="bg-white text-gray-800 font-sans min-h-screen flex flex-col">
     <a href="#view" class="skip-link" id="skip-link">Lewati ke konten utama</a>
@@ -19,13 +20,13 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-[auto_1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center gap-x-3 py-2 md:py-0 md:h-16">
 
-                <a href="#/crm" class="flex items-center gap-3 shrink-0" aria-label="acesio, ke halaman CRM" id="brand-link">
-                    <!-- Taruh logo resmi di public/assets/img/logo.png; jika belum ada, tampil logo bawaan (diatur app.js) -->
+                <a href="#/crm" class="flex items-center gap-3 shrink-0" aria-label="Ke halaman CRM" id="brand-link">
+                    <!-- Logo diunggah dari Pengaturan (disimpan di data/brand); jika belum ada, tampil ikon favicon (diatur app.js) -->
                     <img id="brand-logo" src="" alt="" class="h-9 w-auto object-contain" hidden>
-                    <img id="brand-mark" src="favicon.svg" alt="" class="h-9 w-9">
+                    <img id="brand-mark" src="/brand/favicon" alt="" class="h-9 w-9 object-contain">
                     <div class="leading-tight">
-                        <div id="brand-name" class="text-xl font-extrabold tracking-tight text-brand-800">acesio</div>
-                        <div id="brand-tagline" class="hidden lg:block text-[11px] text-gray-600">Physiotherapy Rehab &amp; Sport Recovery Rehab</div>
+                        <div id="brand-name" class="text-xl font-extrabold tracking-tight text-brand-800"></div>
+                        <div id="brand-tagline" class="hidden lg:block text-[11px] text-gray-600"></div>
                     </div>
                 </a>
 
@@ -72,7 +73,7 @@
 
     <!-- FOOTER -->
     <footer class="border-t border-gray-200 bg-white py-4 text-center text-xs text-gray-600">
-        &copy; <span id="year"></span> <span id="foot-brand" class="font-semibold text-brand-800">acesio</span> &middot; Lead Tracker Gateway
+        &copy; <span id="year"></span> <span id="foot-brand" class="font-semibold text-brand-800"></span> &middot; Lead Tracker Gateway
     </footer>
 
     <div id="toast-host" class="toast-host" aria-live="polite"></div>

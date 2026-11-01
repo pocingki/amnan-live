@@ -14,9 +14,10 @@ import { fileURLToPath } from 'node:url';
 process.env.TZ ||= 'Asia/Jakarta';
 const ROOT = path.resolve(process.env.APP_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '..'));
 
-// Sama seperti server: baca .env dari akar aplikasi (DATA_DIR bisa diatur di sana)
+// Sama seperti server: baca .env dari akar aplikasi, atau dari ENV_FILE untuk instance client (DATA_DIR bisa diatur di sana)
 try {
-  for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split(/\r?\n/)) {
+  const envFile = process.env.ENV_FILE ? path.resolve(process.env.ENV_FILE) : path.join(ROOT, '.env');
+  for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
     if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
   }

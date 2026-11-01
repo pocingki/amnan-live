@@ -15,7 +15,7 @@ const ROUTES = {
 const TITLES = { '/pesan': 'Pesan', '/percakapan': 'Percakapan Masuk', '/crm': 'CRM', '/bot-tester': 'Bot Tester', '/pengaturan': 'Pengaturan' };
 let current = null;
 let navId = 0;
-let brand = 'acesio';
+let brand = 'Amnan';
 let pageTitle = '';
 
 const updateTitle = () => setBaseTitle(`${pageTitle ? pageTitle + ' - ' : ''}${brand} - Lead Tracker Gateway`);
@@ -109,9 +109,13 @@ async function refreshStatus() {
   } catch { /* abaikan; badge tetap di status terakhir */ }
 }
 
+let brandColorSeen = null;
 function applyBrand() {
   const s = getSettings();
   if (!s) return;
+  const color = s.brandColor || '';
+  if (brandColorSeen !== null && color !== brandColorSeen) refreshBrandAssets(); // warna diubah (mis. di tab lain atau dipulihkan dari riwayat)
+  brandColorSeen = color;
   brand = s.brandName || brand;
   $('#brand-name').textContent = brand;
   $('#brand-tagline').textContent = s.brandTagline || '';
@@ -144,8 +148,8 @@ function setupNotifications() {
   addEventListener('pointerdown', unlock);
   addEventListener('keydown', unlock);
   try {
-    if (notificationState() === 'default' && !sessionStorage.getItem('acesio:hint')) {
-      sessionStorage.setItem('acesio:hint', '1');
+    if (notificationState() === 'default' && !sessionStorage.getItem('amnan:hint')) {
+      sessionStorage.setItem('amnan:hint', '1');
       toast('Klik ikon lonceng di kanan atas untuk mengaktifkan notifikasi pesan baru.', false, { duration: 7000 });
     }
   } catch { /* abaikan */ }
@@ -198,16 +202,37 @@ function setupAccount() {
   }).catch(() => { $('#me-name').textContent = '-'; $('#me-role').textContent = '-'; });
 }
 
-// ---------- logo: pakai logo resmi bila ada (tanpa onload inline, sesuai CSP) ----------
-function setupLogo() {
-  const probe = new Image();
-  probe.onload = () => {
+// ---------- logo: pakai logo yang diunggah di Pengaturan bila ada (tanpa onload inline, sesuai CSP) ----------
+// Urutan: /brand/logo (diunggah) -> assets/img/logo.png (cara lama) -> ikon favicon.
+function setupLogo(v = '') {
+  const show = (src) => {
     const logo = $('#brand-logo');
-    logo.src = probe.src;
+    logo.src = src;
     logo.hidden = false;
     $('#brand-mark').hidden = true;
   };
-  probe.src = 'assets/img/logo.png';
+  const tryLoad = (src, next) => {
+    const probe = new Image();
+    probe.onload = () => show(probe.src);
+    probe.onerror = next;
+    probe.src = src;
+  };
+  const fallback = () => {
+    $('#brand-logo').hidden = true;
+    $('#brand-mark').hidden = false;
+  };
+  tryLoad(`/brand/logo${v ? `?v=${v}` : ''}`, () => tryLoad('assets/img/logo.png', fallback));
+}
+
+/** Muat ulang warna, favicon, dan logo setelah diubah (cache-bust agar langsung tampil). */
+function refreshBrandAssets() {
+  const v = Date.now();
+  const css = $('#brand-css');
+  if (css) css.href = `/brand.css?v=${v}`;
+  const ico = $('#brand-icon');
+  if (ico) ico.href = `/brand/favicon?v=${v}`;
+  $('#brand-mark').src = `/brand/favicon?v=${v}`;
+  setupLogo(v);
 }
 
 // ---------- mulai ----------
@@ -217,6 +242,7 @@ setupAccount();
 setupNotifications();
 window.addEventListener('hashchange', go);
 window.addEventListener('settings-changed', applyBrand);
+window.addEventListener('brand-changed', refreshBrandAssets);
 loadSettings().then(applyBrand).catch(() => {});
 refreshStatus();
 go();

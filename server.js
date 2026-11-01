@@ -6,15 +6,15 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-process.env.TZ ||= 'Asia/Jakarta';
-
 // Semua path relatif ke akar aplikasi (lokasi file ini), bukan ke folder tempat perintah dijalankan.
 // Override: APP_DIR (akar) dan DATA_DIR (data; relatif dihitung dari akar).
 const ROOT = path.resolve(process.env.APP_DIR || path.dirname(fileURLToPath(import.meta.url)));
 
-// Muat .env sederhana dari akar aplikasi (tanpa dependensi tambahan)
+// Muat .env sederhana (tanpa dependensi tambahan). Bawaan: <akar aplikasi>/.env. ENV_FILE memungkinkan
+// satu salinan kode melayani banyak client: tiap client punya file .env dan DATA_DIR sendiri (docs/MULTI-CLIENT.md).
 try {
-  for (const line of fs.readFileSync(path.join(ROOT, '.env'), 'utf8').split(/\r?\n/)) {
+  const envFile = process.env.ENV_FILE ? path.resolve(process.env.ENV_FILE) : path.join(ROOT, '.env');
+  for (const line of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {
     const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
     if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
   }
@@ -22,6 +22,7 @@ try {
   /* .env tidak ada: pakai environment apa adanya */
 }
 
+process.env.TZ ||= 'Asia/Jakarta'; // setelah .env dimuat, supaya TZ per client di .env berlaku
 process.env.DATA_DIR = path.resolve(ROOT, process.env.DATA_DIR || 'data');
 // Modul lain memakai path relatif (config/keywords.json, dll.); pastikan selalu dihitung dari akar.
 process.chdir(ROOT);
@@ -29,6 +30,7 @@ process.chdir(ROOT);
 const auth = await import('./src/auth.js');
 const { HttpError } = auth;
 const { initRoutes, route } = await import('./src/routes.js');
+const brand = await import('./src/brand.js');
 
 const PORT = Number(process.env.PORT) || 8080;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -232,6 +234,8 @@ async function handle(req, res) {
   const ip = auth.clientIp(req);
 
   if (p === '/healthz' && ['GET', 'HEAD'].includes(req.method)) return health(req, res);
+  // Identitas brand yang tampil di halaman login juga (warna, nama, logo, favicon): publik, hanya GET/HEAD
+  if (['GET', 'HEAD'].includes(req.method) && brand.servePublic(req, res, p)) return;
 
   if (p === '/login') {
     if (req.method === 'POST') return await handleLogin(req, res, ip);
@@ -319,6 +323,6 @@ process.on('unhandledRejection', (err) => {
 setInterval(() => auth.cleanupSessions(), 10 * 60_000).unref();
 
 server.listen(PORT, () => {
-  console.log(`Dashboard jalan di http://localhost:${PORT}`);
+  console.log(`Dashboard jalan di http://localhost:${PORT}${process.env.CLIENT_ID ? ` (client: ${process.env.CLIENT_ID})` : ''}`);
   waMod?.start?.().catch(console.error);
 });

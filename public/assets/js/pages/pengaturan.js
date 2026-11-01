@@ -1,10 +1,11 @@
 // Pengaturan: bot, serah-terima, ketahanan, retensi, notifikasi + koneksi WhatsApp (QR).
+import { checkBase, normalizeHex, paletteFrom, DEFAULT_PALETTE } from '../brand-color.js';
 import {
   $, api, send, esc, icon, field, INP, BTN_DARK, BTN_LIGHT, toast, poll, onEvent, confirmDialog, getMe, isAdminRole,
   loadSettings, getSettings, saveSettings, onSettingsChange, openSettingsHistory,
 } from '../lib.js';
 
-let stopPoll = null, off = null, offEv = null, lastQr = null, canEdit = true, root;
+let stopPoll = null, off = null, offEv = null, lastQr = null, canEdit = true, root, brandInfo = null;
 
 const BADGE = {
   connected: ['TERHUBUNG', 'text-green-800', 'ok'],
@@ -26,6 +27,12 @@ export function buildSettingsPatch(v, cur = {}) {
   const errors = [], p = {};
   const txt = (k, max) => { p[k] = String(v[k] ?? '').trim().slice(0, max); };
   txt('brandName', 60); txt('brandTagline', 100); txt('botName', 60); txt('adminName', 60);
+  if ('brandColor' in v) { // kosong = palet bawaan; selain itu harus #RRGGBB yang cukup gelap untuk teks putih
+    const c = String(v.brandColor ?? '').trim();
+    const bad = c ? checkBase(c) : null;
+    if (bad) errors.push({ field: 'brandColor', msg: bad });
+    else p.brandColor = c ? normalizeHex(c) : '';
+  }
   for (const k of ['openingMessage', 'handoverMessage']) txt(k, 2000);
   p.botEnabled = v.botEnabled === 'on';
   p.autoTakeoverOnPhoneReply = v.autoTakeoverOnPhoneReply === 'on';
@@ -52,7 +59,8 @@ const chk = (name, on, label, hint = '', dis = '') => `<label class="flex items-
 export async function mount(el) {
   root = el;
   lastQr = null;
-  const [, me] = await Promise.all([loadSettings(), getMe().catch(() => null)]);
+  const [, me, bi] = await Promise.all([loadSettings(), getMe().catch(() => null), api('/api/brand').catch(() => null)]);
+  brandInfo = bi;
   canEdit = isAdminRole(me);
   off = onSettingsChange((s, src) => { if (src !== 'save') render(); });
   render();
@@ -61,6 +69,89 @@ export async function mount(el) {
 }
 
 export function unmount() { stopPoll?.(); off?.(); offEv?.(); stopPoll = off = offEv = null; }
+
+/** Warna utama: pemilih warna + kode hex + pratinjau palet (rumus sama dengan server). */
+function colorField(S, dis) {
+  const c = S.brandColor || '';
+  return field('Warna utama brand', `<div class="flex items-center gap-2">
+      <input type="color" id="b-color-pick" value="${esc(c || DEFAULT_PALETTE[800])}" class="h-10 w-14 p-1 border border-gray-300 rounded-lg bg-white" aria-label="Pilih warna" ${dis}>
+      <input name="brandColor" id="b-color" class="${INP}" value="${esc(c)}" placeholder="Kosong = biru bawaan, contoh #0b5fa5" maxlength="7" autocomplete="off" spellcheck="false" ${dis}>
+      ${dis ? '' : `<button type="button" id="b-color-reset" class="${BTN_LIGHT} shrink-0">Bawaan</button>`}
+    </div>
+    <div id="b-palette" class="rounded overflow-hidden mt-2" style="display:flex;height:12px" aria-hidden="true">${paletteStrip(c)}</div>
+    <p id="b-color-msg" class="text-xs text-red-800 mt-1" role="status" hidden></p>`, 'Dipakai untuk judul, tombol, dan lencana di dashboard dan halaman login. Klik Simpan pengaturan untuk menerapkan.');
+}
+
+function paletteStrip(c) {
+  const p = paletteFrom(checkBase(c) ? '' : c);
+  return Object.entries(p).map(([k, v]) => `<span title="${k}" style="flex:1;background:${esc(v)}"></span>`).join('');
+}
+
+/** Logo dan favicon: diunggah langsung (tidak lewat tombol Simpan). */
+function assetRows(BI, dis) {
+  const kb = (n) => (n >= 1024 ? `${+(n / 1024).toFixed(1)} MB` : `${n} KB`);
+  const lim = BI?.limits || { logoKB: 1024, faviconKB: 256 };
+  const row = (kind, label, hint, accept, info, preview) => `<div class="flex items-center gap-3 flex-wrap">
+      ${preview}
+      <div class="min-w-0 flex-1"><div class="text-sm font-medium">${label}</div><div class="text-xs text-gray-600">${hint}</div></div>
+      ${dis ? '' : `<div class="flex gap-2"><button type="button" data-up="${kind}" class="${BTN_LIGHT}">${info ? 'Ganti' : 'Unggah'}</button>${info ? `<button type="button" data-del="${kind}" class="${BTN_LIGHT}">Hapus</button>` : ''}<input type="file" data-file="${kind}" accept="${accept}" hidden></div>`}
+    </div>`;
+  const box = 'border border-gray-200 rounded-lg bg-white p-1';
+  const logoPrev = BI?.logo
+    ? `<img src="/brand/logo?v=${BI.logo.updatedAt}" alt="Logo saat ini" class="h-12 max-w-[9rem] object-contain ${box}">`
+    : `<div class="h-12 w-20 flex items-center justify-center text-xs text-gray-500 ${box}">Belum ada</div>`;
+  const icoPrev = `<img src="/brand/favicon?v=${BI?.favicon?.updatedAt || 0}" alt="Favicon saat ini" class="h-10 w-10 object-contain ${box}">`;
+  return row('logo', 'Logo', `PNG, JPG, atau WebP, maks ${kb(lim.logoKB)}. Latar transparan lebih baik. Tampil di header dan halaman login.`, 'image/png,image/jpeg,image/webp', BI?.logo, logoPrev)
+    + row('favicon', 'Favicon (ikon tab browser)', `PNG persegi (64x64 atau lebih) atau ICO, maks ${kb(lim.faviconKB)}.`, 'image/png,.ico,image/x-icon', BI?.favicon, icoPrev);
+}
+
+function bindBrand() {
+  const pick = $('#b-color-pick'), txt = $('#b-color');
+  if (txt && canEdit) {
+    const sync = (fromPicker) => {
+      const v = txt.value.trim();
+      const bad = v ? checkBase(v) : null;
+      const msg = $('#b-color-msg');
+      msg.hidden = !bad;
+      msg.textContent = bad || '';
+      $('#b-palette').innerHTML = paletteStrip(bad ? '' : v);
+      if (!fromPicker && !bad && v) pick.value = normalizeHex(v);
+    };
+    pick.oninput = () => { txt.value = pick.value; sync(true); };
+    txt.oninput = () => sync(false);
+    $('#b-color-reset').onclick = () => { txt.value = ''; pick.value = DEFAULT_PALETTE[800]; sync(true); };
+  }
+  const box = $('#b-assets');
+  if (!box || !canEdit) return;
+  const run = async (fn, okMsg) => {
+    try {
+      brandInfo = await fn();
+      box.innerHTML = assetRows(brandInfo, false);
+      window.dispatchEvent(new Event('brand-changed'));
+      toast(okMsg);
+    } catch (err) { toast(err.message, true); }
+  };
+  box.onclick = async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.up) box.querySelector(`[data-file="${b.dataset.up}"]`)?.click();
+    else if (b.dataset.del) {
+      const label = b.dataset.del === 'logo' ? 'logo' : 'favicon';
+      if (!(await confirmDialog(`Hapus ${label}?`, `Tampilan kembali ke ${label === 'logo' ? 'ikon bawaan' : 'favicon bawaan'}.`, { okText: 'Hapus', danger: true }))) return;
+      await run(() => api(`/api/brand/${b.dataset.del}`, { method: 'DELETE' }), `${label} dihapus`);
+    }
+  };
+  box.onchange = async (e) => {
+    const input = e.target;
+    const kind = input.dataset?.file;
+    const f = input.files?.[0];
+    if (!kind || !f) return;
+    input.value = '';
+    const maxKB = kind === 'logo' ? (brandInfo?.limits?.logoKB ?? 1024) : (brandInfo?.limits?.faviconKB ?? 256);
+    if (f.size > maxKB * 1024) { toast(`Berkas terlalu besar (maks ${maxKB} KB).`, true); return; }
+    await run(() => api(`/api/brand/${kind}`, { method: 'POST', headers: { 'Content-Type': f.type || 'application/octet-stream' }, body: f }), `${kind === 'logo' ? 'Logo' : 'Favicon'} diperbarui`);
+  };
+}
 
 function render() {
   const S = getSettings(), N = S.notify || {};
@@ -77,6 +168,8 @@ function render() {
         ${chk('botEnabled', S.botEnabled, 'Bot aktif (membalas chat otomatis)', '', dis)}
         ${field('Nama brand', `<input name="brandName" class="${INP}" value="${esc(S.brandName)}" ${dis}>`, 'Tampil di header dan footer')}
         ${field('Tagline brand', `<input name="brandTagline" class="${INP}" value="${esc(S.brandTagline)}" ${dis}>`, 'Tampil di bawah nama brand pada header')}
+        ${colorField(S, dis)}
+        <div id="b-assets" class="space-y-3">${assetRows(brandInfo, !canEdit)}</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           ${field('Nama bot', `<input name="botName" class="${INP}" value="${esc(S.botName)}" ${dis}>`)}
           ${field('Nama admin', `<input name="adminName" class="${INP}" value="${esc(S.adminName)}" ${dis}>`)}
@@ -133,6 +226,7 @@ function render() {
   lastQr = null;
 
   $('#s-history').onclick = openSettingsHistory;
+  bindBrand();
   $('#s-form').onsubmit = async (e) => {
     e.preventDefault();
     if (!canEdit) return;

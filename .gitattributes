@@ -1,0 +1,3 @@
+# Berkas batch Windows wajib CRLF; tanpa ini Git bisa menyimpannya dengan LF dan .bat gagal jalan.
+*.bat text eol=crlf
+*.cmd text eol=crlf

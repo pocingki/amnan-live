@@ -1,4 +1,18 @@
 /* Masukan Tailwind. Hasil build: public/assets/css/tailwind.css (npm run build:css). */
+/* Palet brand bawaan (K8) sebagai "R G B". Per client ditimpa oleh /brand.css (warna di Pengaturan). */
+:root {
+  --brand-50-rgb: 238 247 254;
+  --brand-100-rgb: 217 238 252;
+  --brand-200-rgb: 181 222 250;
+  --brand-300-rgb: 117 197 245;
+  --brand-400-rgb: 63 159 230;
+  --brand-500-rgb: 29 111 207;
+  --brand-600-rgb: 15 80 176;
+  --brand-700-rgb: 11 63 152;
+  --brand-800-rgb: 8 50 132;
+  --brand-900-rgb: 6 37 103;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -1,22 +1,12 @@
-// Konfigurasi Tailwind. Palet "brand" mengikuti kontrak K8.
+// Konfigurasi Tailwind. Palet "brand" mengikuti kontrak K8 (nilai bawaan) tetapi dibaca dari CSS variable.
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['public/**/*.html', 'public/**/*.js'],
   theme: {
     extend: {
       colors: {
-        brand: {
-          50: '#eef7fe',
-          100: '#d9eefc',
-          200: '#b5defa',
-          300: '#75c5f5',
-          400: '#3f9fe6',
-          500: '#1d6fcf',
-          600: '#0f50b0',
-          700: '#0b3f98',
-          800: '#083284',
-          900: '#062567',
-        },
+        // Nilai bawaan ada di src/tailwind.input.css (:root); /brand.css menimpanya per client.
+        brand: Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((n) => [n, `rgb(var(--brand-${n}-rgb) / <alpha-value>)`])),
       },
     },
   },
