@@ -2,13 +2,16 @@
 // Efek JAWABAN berlaku segera pada conv; efek KELUARAN hanya lewat commit(conv) setelah balasan terkirim.
 import { matchIntent } from './bot-intent.js';
 import { isQuestion, isSkip, validateAnswer } from './bot-validate.js';
+import { bookingLink } from './connect.js';
 
 const MEDIA = new Set(['image', 'audio', 'video', 'sticker', 'document', 'location', 'contact']);
 
 // Satu kali lewat: nilai hasil penggantian tidak diperluas lagi.
+// {booking} = tautan booking bertanda tangan (docs/INTEGRASI.md bagian 4); dibiarkan bila belum dikonfigurasi.
 export const fill = (t, conv, S) =>
-  String(t || '').replace(/\{(nama|bot|admin)\}/gi, (_, k) => {
+  String(t || '').replace(/\{(nama|bot|admin|booking)\}/gi, (whole, k) => {
     k = k.toLowerCase();
+    if (k === 'booking') return bookingLink(conv) ?? whole;
     return k === 'nama' ? conv.name || 'Kak' : k === 'bot' ? S.botName : S.adminName;
   });
 

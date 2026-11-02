@@ -31,6 +31,7 @@ const auth = await import('./src/auth.js');
 const { HttpError } = auth;
 const { initRoutes, route } = await import('./src/routes.js');
 const brand = await import('./src/brand.js');
+const connect = await import('./src/connect.js');
 
 const PORT = Number(process.env.PORT) || 8080;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -221,6 +222,32 @@ function health(req, res) {
   sendJSON(res, 200, { status: 'ok', uptime: Math.round(process.uptime()), version: VERSION, wa: { status } });
 }
 
+/** API aplikasi pendamping (kontrak v1): autentikasi API key, tanpa cookie dan tanpa CSRF. */
+async function handleV1(req, res, url, ip) {
+  const a = connect.authenticateKey(req, ip);
+  if (!a.ok) {
+    if (a.status === 429) {
+      res.setHeader('Retry-After', String(a.retryAfter));
+      return sendJSON(res, 429, { error: `Terlalu banyak percobaan gagal. Coba lagi dalam ${fmtWait(a.retryAfter)}.`, code: 'RATE_LIMIT' });
+    }
+    res.setHeader('WWW-Authenticate', 'Bearer realm="amnan-connect"');
+    return sendJSON(res, 401, { error: 'API key tidak valid', code: 'UNAUTHORIZED' });
+  }
+  const user = { name: `app:${a.app.name}`, role: 'app' };
+  const ctx = {
+    sendJSON,
+    readBody: (r = req, limit) => auth.readBody(r, limit ?? auth.BODY_LIMIT),
+    user, ip, app: a.app, csrfToken: null,
+    audit: (action, detail) => auth.audit({ user: user.name, role: user.role, ip, action, detail }),
+    requireRole() {
+      sendJSON(res, 403, { error: 'Kunci aplikasi tidak punya akses ke endpoint ini', code: 'FORBIDDEN_SCOPE' });
+      return false;
+    },
+  };
+  const handled = await route(req, res, url, ctx);
+  if (!handled && !res.headersSent) sendJSON(res, 404, { error: 'endpoint tidak ditemukan', code: 'NOT_FOUND' });
+}
+
 async function handle(req, res) {
   setSecurityHeaders(req, res);
   if (!String(req.url).startsWith('/')) throw new HttpError(400, 'Permintaan tidak valid');
@@ -243,6 +270,8 @@ async function handle(req, res) {
   }
   if (p === '/logout' && req.method === 'POST') return await handleLogout(req, res, ip);
   if (req.method === 'GET' && isPublicAsset(p)) return serveStatic(req, res, p);
+
+  if (p.startsWith('/api/v1/')) return await handleV1(req, res, url, ip);
 
   const a = await auth.authenticate(req, ip);
   if (!a.ok) {
@@ -294,6 +323,12 @@ async function shutdown(reason, code = 0) {
   await Promise.race([closed, new Promise((r) => setTimeout(r, 3000))]);
 
   try {
+    connect.stop();
+    connect.flush();
+  } catch (err) {
+    console.error('[server] gagal menutup Connect:', err.message);
+  }
+  try {
     await waMod?.stop?.();
   } catch (err) {
     console.error('[server] gagal menghentikan WhatsApp:', err);
@@ -325,4 +360,5 @@ setInterval(() => auth.cleanupSessions(), 10 * 60_000).unref();
 server.listen(PORT, () => {
   console.log(`Dashboard jalan di http://localhost:${PORT}${process.env.CLIENT_ID ? ` (client: ${process.env.CLIENT_ID})` : ''}`);
   waMod?.start?.().catch(console.error);
+  connect.start();
 });

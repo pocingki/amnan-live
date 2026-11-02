@@ -40,7 +40,7 @@ export const DEFAULTS = {
     { id: 'jadwal', name: 'Jadwal & jam buka', keywords: ['jadwal', 'jam buka', 'jam operasional'], response: '[ISI: jadwal dan jam buka]', active: false, example: true, priority: 0 },
     { id: 'lokasi', name: 'Lokasi', keywords: ['lokasi', 'alamat', 'dimana', 'di mana'], response: '[ISI: alamat dan petunjuk arah]', active: false, example: true, priority: 0 },
     { id: 'layanan', name: 'Layanan', keywords: ['layanan', 'treatment', 'terapi'], response: '[ISI: daftar layanan yang tersedia]', active: false, example: true, priority: 0 },
-    { id: 'cara-booking', name: 'Cara booking', keywords: ['booking', 'reservasi', 'daftar', 'janji'], response: '[ISI: langkah membuat janji/booking]', active: false, example: true, priority: 0 },
+    { id: 'cara-booking', name: 'Cara booking', keywords: ['booking', 'reservasi', 'daftar', 'janji'], response: '[ISI: langkah membuat janji/booking. Tulis {booking} untuk menyisipkan tautan jadwal pribadi, mis. "Silakan pilih jadwal di sini: {booking}"]', active: false, example: true, priority: 0 },
   ],
   requiredFields: [
     { id: 'nama', label: 'Nama', question: 'Boleh kami tahu nama Anda?', enabled: true, type: 'name', options: [] },
