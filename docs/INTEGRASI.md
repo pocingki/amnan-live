@@ -126,7 +126,7 @@ Silakan pilih jadwal Anda di sini: {booking}
 ```
 Diganti menjadi `<BOOKING_URL>/?c=<token>`. `token = base64url(JSON{ "p": phone, "n": name, "exp": detikEpoch }) + "." + base64url(HMAC-SHA256(rahasia, payloadBase64))`.
 
-- `.env` Amnan: `BOOKING_URL`, `BOOKING_LINK_SECRET`, `BOOKING_LINK_TTL_HOURS` (bawaan 48). Aplikasi booking memakai rahasia yang sama (`AMNAN_LINK_SECRET`).
+- `.env` Amnan: `BOOKING_URL`, `BOOKING_LINK_SECRET`, `BOOKING_LINK_TTL_HOURS` (bawaan 12, maks 24; Booking menolak tautan > 24 jam; `BOOKING_LINK_SECRET` minimal 16 karakter). Aplikasi booking memakai rahasia yang sama (`AMNAN_LINK_SECRET`).
 - Aplikasi **memverifikasi** tanda tangan dan kedaluwarsa, lalu menganggap nomor itu terverifikasi (sudah memegang percakapan WhatsApp dengan bisnis). Nomor diambil dari token, bukan dari isian formulir.
 - Bila `BOOKING_URL` atau `BOOKING_LINK_SECRET` belum diisi, `{booking}` dibiarkan apa adanya (terlihat jelas di Bot Tester).
 

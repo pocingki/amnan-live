@@ -17,11 +17,11 @@ const R = await import('../src/routes.js');
 const fakeReq = (headers = {}, remote = '203.0.113.9') => ({ headers, socket: { remoteAddress: remote } });
 
 test('hash scrypt: benar/salah, salt acak, format rusak ditolak', async () => {
-  const h1 = await A.hashPassword('rahasia123');
-  const h2 = await A.hashPassword('rahasia123');
+  const h1 = await A.hashPassword('Kopi-Hangat-77');
+  const h2 = await A.hashPassword('Kopi-Hangat-77');
   assert.match(h1, /^scrypt\$16384\$8\$1\$[0-9a-f]{32}\$[0-9a-f]{128}$/);
   assert.notEqual(h1, h2);
-  assert.equal(await A.verifyPassword('rahasia123', h1), true);
+  assert.equal(await A.verifyPassword('Kopi-Hangat-77', h1), true);
   assert.equal(await A.verifyPassword('salah', h1), false);
   assert.equal(await A.verifyPassword('x', 'plain-text'), false);
   assert.equal(await A.verifyPassword('x', 'scrypt$999999999$8$1$aa$bb'), false);
@@ -130,17 +130,17 @@ test('CSRF: token terikat sesi, header harus sama dengan cookie', () => {
 test('pengguna: tambah, peran, admin terakhir terlindungi, seed dari env', async () => {
   assert.equal(A.hasUsers(), false);
   process.env.DASHBOARD_USER = 'Boss';
-  process.env.DASHBOARD_PASSWORD = 'rahasia123';
+  process.env.DASHBOARD_PASSWORD = 'Kopi-Hangat-77';
   assert.equal(await A.seedFromEnv(), true);
   assert.equal(await A.seedFromEnv(), false, 'seed hanya sekali');
   assert.deepEqual(A.listUsers().map((u) => [u.name, u.role]), [['boss', 'admin']]);
   assert.ok(!JSON.stringify(A.listUsers()).includes('scrypt'), 'hash tidak boleh bocor di listUsers');
 
-  await assert.rejects(A.addUser('x', 'rahasia123'), { status: 400 });
+  await assert.rejects(A.addUser('x', 'Kopi-Hangat-77'), { status: 400 });
   await assert.rejects(A.addUser('budi', 'pendek'), { status: 400 });
-  await assert.rejects(A.addUser('budi', 'rahasia123', 'dewa'), { status: 400 });
-  await A.addUser('Budi', 'rahasia123', 'agent');
-  await assert.rejects(A.addUser('budi', 'rahasia123'), { status: 409 });
+  await assert.rejects(A.addUser('budi', 'Kopi-Hangat-77', 'dewa'), { status: 400 });
+  await A.addUser('Budi', 'Kopi-Hangat-77', 'agent');
+  await assert.rejects(A.addUser('budi', 'Kopi-Hangat-77'), { status: 409 });
   assert.equal(A.getUser('BUDI').role, 'agent');
 
   assert.throws(() => A.removeUser('boss'), { status: 409 });
@@ -150,7 +150,7 @@ test('pengguna: tambah, peran, admin terakhir terlindungi, seed dari env', async
   A.removeUser('boss');
   assert.throws(() => A.removeUser('tidak-ada'), { status: 404 });
 
-  const r = await A.login('203.0.113.1', 'budi', 'rahasia123', 'form');
+  const r = await A.login('203.0.113.1', 'budi', 'Kopi-Hangat-77', 'form');
   assert.deepEqual(r.user, { name: 'budi', role: 'admin' });
   assert.equal((await A.login('203.0.113.2', 'budi', 'salah-banget', 'form')).status, 401);
   assert.equal((await A.login('203.0.113.2', 'tidak-ada', 'salah-banget', 'form')).status, 401);
@@ -164,7 +164,7 @@ test('pengguna: tambah, peran, admin terakhir terlindungi, seed dari env', async
 });
 
 test('sesi: hanya hash token di disk, bertahan setelah "restart", kedaluwarsa dibersihkan', async () => {
-  await A.addUser('sesi', 'rahasia123', 'agent');
+  await A.addUser('sesi', 'Kopi-Hangat-77', 'agent');
   const { token, csrf } = A.createSession({ name: 'sesi' }, '203.0.113.5');
   assert.equal(csrf, A.csrfFor(token));
   const file = fs.readFileSync(path.join(DATA, 'sessions.json'), 'utf8');
@@ -326,4 +326,25 @@ test('route: agent ditolak 403 oleh dispatcher walau tidak ada modul yang menang
   const url = new URL('http://x/api/settings');
   assert.equal(await R.route({ method: 'PUT' }, {}, url, ctx), true);
   assert.equal(sent, 403);
+});
+
+// ---- perbaikan keamanan: kebijakan password (min 8, tolak yang umum/berpola), audit tanpa nomor utuh
+test('kebijakan password: min 8, tolak umum/berpola/username, terima acak 8 karakter', () => {
+  for (const weak of ['1234567', '123456789', '12345678', 'password', 'qwerty123', 'aaaaaaaa', 'abcdefgh', 'admin123', 'amnan123']) {
+    assert.throws(() => A.checkPasswordPolicy(weak), { status: 400 }, weak);
+  }
+  assert.throws(() => A.checkPasswordPolicy('budi-budi', 'budi-budi'), { status: 400 }, 'sama dengan username');
+  assert.doesNotThrow(() => A.checkPasswordPolicy('Kd7#mQ2x'));
+});
+
+test('seedFromEnv menolak DASHBOARD_PASSWORD lemah', async () => {
+  const old = { ...process.env };
+  try {
+    process.env.DASHBOARD_PASSWORD = '123456789';
+    delete process.env.DASHBOARD_PASSWORD_HASH;
+    // data/users.json kosong pada DATA_DIR uji ini
+    const dir = (await import('node:fs')).mkdtempSync((await import('node:path')).join((await import('node:os')).tmpdir(), 'amn-seed-'));
+    process.env.DATA_DIR = dir;
+    if (!A.hasUsers()) await assert.rejects(A.seedFromEnv(), /DASHBOARD_PASSWORD ditolak/);
+  } finally { Object.assign(process.env, old); }
 });

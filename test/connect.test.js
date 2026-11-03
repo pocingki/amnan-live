@@ -138,18 +138,18 @@ test('tautan prefill {booking}: bertanda tangan, kedaluwarsa, dan tak dikonfigur
   assert.equal(fill('Booking: {booking}', conv, S), 'Booking: {booking}', 'tanpa env, placeholder dibiarkan');
 
   process.env.BOOKING_URL = 'https://book.klinik.com/';
-  process.env.BOOKING_LINK_SECRET = 'rahasia-bersama';
+  process.env.BOOKING_LINK_SECRET = 'rahasia-bersama-16x';
   try {
     const out = fill('Booking: {booking}', conv, S);
     const link = out.slice('Booking: '.length);
     assert.match(link, /^https:\/\/book\.klinik\.com\/\?c=[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
     const [payload, mac] = new URL(link).searchParams.get('c').split('.');
-    const expect = crypto.createHmac('sha256', 'rahasia-bersama').update(payload).digest('base64url');
+    const expect = crypto.createHmac('sha256', 'rahasia-bersama-16x').update(payload).digest('base64url');
     assert.equal(mac, expect);
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString());
     assert.equal(data.p, '6281234567890');
     assert.equal(data.n, 'Siti');
-    assert.ok(data.exp > Date.now() / 1000 + 47 * 3600 && data.exp < Date.now() / 1000 + 49 * 3600);
+    assert.ok(data.exp > Date.now() / 1000 + 11 * 3600 && data.exp < Date.now() / 1000 + 13 * 3600, 'bawaan 12 jam');
     assert.equal(fill('{BOOKING}', { phone: 'lid-123' }, S), '{BOOKING}', 'tanpa nomor valid tidak dibuat tautan');
   } finally {
     delete process.env.BOOKING_URL;
@@ -247,4 +247,26 @@ test('createWebhook: validasi tipe, batas jumlah, dan ping memaksa terkirim', ()
   assert.equal(C.pingWebhook(webhook.id), 1, 'ping tetap diantrekan walau tidak dilanggan');
   C.updateWebhook(webhook.id, { active: false });
   assert.throws(() => C.pingWebhook(webhook.id), /nonaktif/);
+});
+
+test('pinnedPost: menolak host yang resolve ke alamat privat (DNS rebinding) dan tidak mengikuti redirect', async () => {
+  const http = await import('node:http');
+  C.setLookup(async () => [{ address: '127.0.0.1', family: 4 }]);
+  const old = process.env.CONNECT_ALLOW_PRIVATE_URLS;
+  delete process.env.CONNECT_ALLOW_PRIVATE_URLS;
+  try {
+    await assert.rejects(C.pinnedPost('https://dns-licik.example.com/hook', { body: '{}' }), /bukan alamat publik/);
+    // diizinkan privat: redirect 302 tidak diikuti, status dikembalikan apa adanya
+    process.env.CONNECT_ALLOW_PRIVATE_URLS = '1';
+    let hits = 0;
+    const srv = http.createServer((req, res) => { hits++; res.writeHead(302, { location: 'http://127.0.0.1:1/dalam' }).end(); });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+    const r = await C.pinnedPost(`http://127.0.0.1:${srv.address().port}/x`, { body: '{}' });
+    assert.equal(r.status, 302);
+    assert.equal(hits, 1);
+    await new Promise((r2) => srv.close(r2));
+  } finally {
+    C.setLookup(null);
+    if (old === undefined) delete process.env.CONNECT_ALLOW_PRIVATE_URLS; else process.env.CONNECT_ALLOW_PRIVATE_URLS = old;
+  }
 });

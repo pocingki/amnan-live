@@ -102,3 +102,25 @@ test('kunci hex 64 karakter diterima langsung', () => {
   assert.equal(C.get(PHONE).messages[0].text, SECRET);
   D.closeAll();
 });
+
+// ---- berkas JSON (pengguna, pengaturan, rahasia webhook) ikut terenkripsi bila DATA_KEY aktif
+test('berkas JSON terenkripsi bila DATA_KEY aktif, terbaca balik, dan berkas lama yang polos dimigrasi', async () => {
+  const J = await import('../src/jsonfile.js');
+  const dir = fresh();
+  const secret = { token: 'whsec_RAHASIA_SANGAT_PANJANG_12345', n: 1 };
+  J.save('x.json', secret);
+  assert.ok(fs.readFileSync(path.join(dir, 'x.json'), 'utf8').includes('whsec_RAHASIA'), 'tanpa kunci: polos (pembanding)');
+  process.env.DATA_KEY = 'a'.repeat(64);
+  assert.deepEqual(J.load('x.json', null), secret, 'berkas polos lama tetap terbaca');
+  J.save('x.json', { ...secret, n: 2 });
+  const disk = fs.readFileSync(path.join(dir, 'x.json'), 'utf8');
+  assert.ok(!disk.includes('whsec_RAHASIA'), 'berkas terenkripsi di disk');
+  assert.ok(!fs.readFileSync(path.join(dir, 'x.json.bak'), 'utf8').includes('whsec_RAHASIA'), 'cadangan juga terenkripsi');
+  assert.deepEqual(J.load('x.json', null), { ...secret, n: 2 });
+  delete process.env.DATA_KEY;
+  assert.throws(() => J.load('x.json', null), /DATA_KEY/, 'tanpa kunci: galat jelas, bukan dianggap rusak');
+  assert.ok(!fs.readdirSync(dir).some((f) => f.includes('.corrupt-')), 'tidak dikarantina');
+  process.env.DATA_KEY = 'b'.repeat(64);
+  assert.throws(() => J.load('x.json', null), /DATA_KEY/, 'kunci salah: galat jelas');
+  delete process.env.DATA_KEY;
+});

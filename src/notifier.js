@@ -3,11 +3,12 @@
 import * as events from './events.js';
 import * as C from './conversations.js';
 import * as settings from './settings.js';
+import { pinnedPost } from './connect.js';
 
 const TIMEOUT_MS = 5000;
 const DEDUPE_MS = 10 * 60000;
 let fetchFn = (...a) => globalThis.fetch(...a);
-export const setFetch = (f) => { fetchFn = f || ((...a) => globalThis.fetch(...a)); };
+export const setFetch = (f) => { fetchFn = f || ((...a) => globalThis.fetch(...a)); customFetch = !!f; };
 
 let unsubs = [];
 let waTimer = null;
@@ -42,15 +43,14 @@ function withTimeout(p, ms) {
   return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('timeout')), ms); })]).finally(() => clearTimeout(t));
 }
 
+let customFetch = false;
 async function post(url, body) {
   const secret = cfg().telegramBotToken;
   try {
-    const res = await withTimeout(fetchFn(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    }), TIMEOUT_MS + 500);
+    // Produksi: IP terkunci + tanpa redirect (anti-SSRF). Bila fetch diganti (tes) jalur lama dipakai.
+    const res = customFetch
+      ? await withTimeout(fetchFn(url, { method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(TIMEOUT_MS) }), TIMEOUT_MS + 500)
+      : await withTimeout(pinnedPost(url, { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), timeoutMs: TIMEOUT_MS }).then((r) => ({ ok: r.status >= 200 && r.status < 300, status: r.status })), TIMEOUT_MS + 500);
     if (res && res.ok === false) throw new Error(`HTTP ${res.status}`);
     return true;
   } catch (e) {

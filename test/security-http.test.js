@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = path.join(REPO, 'server.js');
 const CLI = path.join(REPO, 'scripts', 'users.js');
-const PASS = 'rahasia123';
+const PASS = 'Kopi-Hangat-77';
 const tmp = (p) => fs.mkdtempSync(path.join(os.tmpdir(), p));
 
 // Modul API tambahan khusus tes (dimuat lewat API_EXTRA_DIR sebelum _legacy)
@@ -456,7 +456,7 @@ test('TRUST_PROXY=1: IP diambil dari kanan; entri kiri XFF yang dipalsukan tidak
   try {
     const via = (ip, spoof = '') => ({ 'x-forwarded-for': spoof ? `${spoof}, ${ip}` : ip });
     // (a) satu IP nyata (kanan) dengan entri kiri berganti-ganti + username berganti-ganti
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) { // pembatas IP-saja longgar (20): satu IP tidak bisa menebak banyak akun
       const r = await call(S, '/api/me', { auth: basic('user' + i, 'salah'), headers: via('10.0.0.1', `1.1.1.${i}`) });
       assert.equal(r.status, 401);
     }
@@ -465,12 +465,13 @@ test('TRUST_PROXY=1: IP diambil dari kanan; entri kiri XFF yang dipalsukan tidak
     // IP nyata lain tidak terdampak
     assert.equal((await call(S, '/api/me', { auth: basic('admin', PASS), headers: via('10.0.0.2') })).status, 200);
 
-    // (b) satu username diserang dari banyak IP -> kunci per-username
+    // (b) satu username diserang dari banyak IP: admin asli TIDAK boleh ikut terkunci (anti-DoS akun);
+    // kunci per-username sengaja sangat longgar (100 gagal, maks 60 dtk), dan tiap IP penyerang tetap dibatasi sendiri.
     for (let i = 0; i < 5; i++) {
       assert.equal((await call(S, '/api/me', { auth: basic('admin', 'salah' + i), headers: via(`10.0.1.${i}`) })).status, 401);
     }
     const u = await call(S, '/api/me', { auth: basic('admin', PASS), headers: via('10.0.1.99') });
-    assert.equal(u.status, 429, 'username terkunci walau IP-nya baru');
+    assert.equal(u.status, 200, 'admin asli tetap bisa login walau username-nya diserang dari banyak IP');
 
     // (c) HSTS & cookie Secure hanya bila proxy melaporkan https
     const h = await call(S, '/healthz', { headers: { 'x-forwarded-proto': 'https', 'x-forwarded-for': '10.0.2.1' } });

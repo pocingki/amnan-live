@@ -58,10 +58,36 @@ export async function verifyPassword(password, stored) {
 let dummyHash;
 const dummy = () => (dummyHash ||= hashPassword('tidak-dipakai-' + crypto.randomBytes(8).toString('hex')));
 
-export function checkPasswordPolicy(password) {
+// Daftar sandi umum (huruf kecil, tanpa pemisah). Panjang minimal tetap 8; ini hanya menolak yang mudah ditebak.
+const COMMON_PW = new Set([
+  'password', 'password1', 'password12', 'password123', 'passw0rd', 'admin123', 'admin1234', 'administrator', 'qwerty123',
+  'qwertyui', 'qwertyuiop', 'asdfghjk', 'asdfghjkl', 'zxcvbnm1', 'letmein1', 'welcome1', 'welcome123', 'iloveyou', 'abc12345',
+  'abcd1234', '12345678', '123456789', '1234567890', '12345678910', '11111111', '00000000', '1q2w3e4r', '1qaz2wsx', 'katasandi',
+  'sandi123', 'rahasia1', 'rahasia123', 'indonesia', 'amnan123', 'amnanlive',
+]);
+const KEY_ROWS = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', '1234567890'].flatMap((r) => [r, [...r].reverse().join('')]);
+const hasKeyboardRun = (s, n = 6) => KEY_ROWS.some((row) => { for (let i = 0; i + n <= row.length; i++) if (s.includes(row.slice(i, i + n))) return true; return false; });
+
+function isSimplePattern(s) {
+  if (new Set(s).size <= 2) return true; // aaaaaaaa, abababab
+  for (let p = 1; p <= 4; p++) if (s.length % p === 0 && s === s.slice(0, p).repeat(s.length / p)) return true; // abcabcabc
+  const d = [];
+  for (let i = 1; i < s.length; i++) d.push(s.charCodeAt(i) - s.charCodeAt(i - 1));
+  return d.every((x) => x === 1) || d.every((x) => x === -1);
+}
+
+/** Lempar HttpError 400 bila sandi terlalu pendek, terlalu umum, berpola, atau sama dengan username. */
+export function checkPasswordPolicy(password, username = '') {
   const s = String(password ?? '');
   if (s.length < PASSWORD_MIN) throw new HttpError(400, `Password minimal ${PASSWORD_MIN} karakter`);
   if (s.length > PASSWORD_MAX) throw new HttpError(400, `Password maksimal ${PASSWORD_MAX} karakter`);
+  const low = s.toLowerCase();
+  const squeezed = low.replace(/[^a-z0-9]/g, '');
+  const user = normName(username);
+  if (user && (low === user || squeezed === user.replace(/[^a-z0-9]/g, ''))) throw new HttpError(400, 'Password tidak boleh sama dengan nama pengguna');
+  if (COMMON_PW.has(low) || COMMON_PW.has(squeezed)) throw new HttpError(400, 'Password terlalu umum, pilih yang lebih sulit ditebak');
+  if (hasKeyboardRun(squeezed)) throw new HttpError(400, 'Password tidak boleh memuat deret papan ketik atau angka berurutan (mis. qwerty, 123456)');
+  if (isSimplePattern(s)) throw new HttpError(400, 'Password tidak boleh berupa pengulangan atau deret sederhana');
 }
 
 // ---------------------------------------------------------------- Pengguna (data/users.json)
@@ -100,7 +126,7 @@ export async function addUser(name, password, role = 'agent') {
   const n = normName(name);
   if (!NAME_RE.test(n)) throw new HttpError(400, 'Nama pengguna 2-64 karakter: huruf, angka, titik, garis bawah, @, atau minus');
   if (!ROLES.includes(role)) throw new HttpError(400, `Peran harus salah satu dari: ${ROLES.join(', ')}`);
-  checkPasswordPolicy(password);
+  checkPasswordPolicy(password, n);
   if (getUser(n)) throw new HttpError(409, 'Nama pengguna sudah dipakai');
   const hash = await hashPassword(password);
   const now = new Date().toISOString();
@@ -120,7 +146,7 @@ export function removeUser(name) {
 export async function setPassword(name, password) {
   const u = getUser(name);
   if (!u) throw new HttpError(404, 'Pengguna tidak ditemukan');
-  checkPasswordPolicy(password);
+  checkPasswordPolicy(password, u.name);
   const hash = await hashPassword(password);
   const now = new Date().toISOString();
   writeUsers(readUsers().map((x) => (x === u ? { ...x, hash, updatedAt: now } : x)));
@@ -146,7 +172,10 @@ export async function seedFromEnv() {
   const name = normName(process.env.DASHBOARD_USER || 'admin');
   let hash = process.env.DASHBOARD_PASSWORD_HASH || '';
   if (hash && !isHash(hash)) throw new Error('DASHBOARD_PASSWORD_HASH tidak valid. Buat dengan: node scripts/users.js hash');
-  if (!hash && process.env.DASHBOARD_PASSWORD) hash = await hashPassword(process.env.DASHBOARD_PASSWORD);
+  if (!hash && process.env.DASHBOARD_PASSWORD) {
+    try { checkPasswordPolicy(process.env.DASHBOARD_PASSWORD, name); } catch (e) { throw new Error(`DASHBOARD_PASSWORD ditolak: ${e.message}`); }
+    hash = await hashPassword(process.env.DASHBOARD_PASSWORD);
+  }
   if (!hash) return false;
   const now = new Date().toISOString();
   writeUsers([{ name, role: 'admin', hash, createdAt: now, updatedAt: now }]);
@@ -275,15 +304,25 @@ const envInt = (name, def) => {
   return Number.isInteger(n) && n > 0 ? n : def;
 };
 
-/** Pembatas bersama untuk form login DAN Basic Auth. */
+/**
+ * Pembatas login (form dan Basic Auth). Tiga lapis:
+ *  - gabungan IP+username: ketat (`limiter`, juga dipakai kunci API),
+ *  - IP saja: longgar, supaya satu IP tidak bisa menebak banyak akun,
+ *  - username saja: sangat longgar dan kuncinya singkat (maks 60 dtk), supaya orang lain tidak bisa mengunci admin lama-lama.
+ */
 export const limiter = createLimiter({
   free: envInt('LOGIN_MAX_FAILS', 5),
   baseMs: envInt('LOGIN_LOCK_BASE_SEC', 30) * 1000,
   maxMs: envInt('LOGIN_LOCK_MAX_SEC', 900) * 1000,
 });
-setInterval(() => limiter.sweep(), 5 * 60_000).unref();
+const ipLimiter = createLimiter({ free: envInt('LOGIN_IP_MAX_FAILS', 20), baseMs: 30_000, maxMs: envInt('LOGIN_LOCK_MAX_SEC', 900) * 1000 });
+const userLimiter = createLimiter({ free: envInt('LOGIN_USER_MAX_FAILS', 100), baseMs: 5_000, maxMs: 60_000 });
+setInterval(() => { limiter.sweep(); ipLimiter.sweep(); userLimiter.sweep(); }, 5 * 60_000).unref();
 
-export const limitKeys = (ip, username) => [`ip:${ipKey(ip)}`, `u:${normName(username).slice(0, 64)}`];
+export const limitKeys = (ip, username) => {
+  const u = normName(username).slice(0, 64);
+  return { both: [`ip:${ipKey(ip)}|u:${u}`], ip: [`ip:${ipKey(ip)}`], user: [`u:${u}`] };
+};
 
 const logName = (s) => JSON.stringify(String(s ?? '').slice(0, 64));
 
@@ -293,7 +332,7 @@ const logName = (s) => JSON.stringify(String(s ?? '').slice(0, 64));
  */
 export async function login(ip, username, password, via) {
   const keys = limitKeys(ip, username);
-  const wait = limiter.check(keys);
+  const wait = Math.max(limiter.check(keys.both), ipLimiter.check(keys.ip), userLimiter.check(keys.user));
   if (wait) return { ok: false, status: 429, retryAfter: wait };
 
   const u = getUser(username);
@@ -304,11 +343,11 @@ export async function login(ip, username, password, via) {
     good = good && !!u;
   }
   if (good) {
-    limiter.reset([keys[1]]); // hanya kunci username; kunci IP tidak direset agar tidak bisa dipakai menghapus hitungan
+    limiter.reset(keys.both); // kunci IP-saja tidak direset agar tidak bisa dipakai menghapus hitungan
     return { ok: true, user: { name: u.name, role: u.role } };
   }
 
-  const lock = limiter.fail(keys);
+  const lock = Math.max(limiter.fail(keys.both), ipLimiter.fail(keys.ip), userLimiter.fail(keys.user));
   console.warn(`[auth] login GAGAL via=${via} user=${logName(username)} ip=${ip}`);
   audit({ user: normName(username).slice(0, 64) || '-', ip, action: 'login.gagal', detail: { via } });
   if (lock) {
@@ -447,12 +486,17 @@ const pad = (n) => String(n).padStart(2, '0');
 export const dayStamp = (d = new Date()) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const auditDir = () => path.join(dataDir(), 'audit');
 const SECRET_KEY = /pass|token|secret|hash|csrf|cookie|authorization/i;
+// Nomor pelanggan tidak dicatat utuh di audit (berkas audit tidak ikut terhapus oleh hak hapus/retensi).
+const maskPhoneForAudit = (v) => {
+  const d = String(v ?? '').replace(/\D/g, '');
+  return d.length < 7 ? (d ? '****' : '') : `${d.slice(0, 4)}****${d.slice(-3)}`;
+};
 
 function cleanDetail(detail) {
   if (detail === undefined || detail === null) return undefined;
   let s;
   try {
-    s = JSON.stringify(detail, (k, v) => (k && SECRET_KEY.test(k) ? '[disembunyikan]' : v));
+    s = JSON.stringify(detail, (k, v) => (k && SECRET_KEY.test(k) ? '[disembunyikan]' : k === 'phone' && (typeof v === 'string' || typeof v === 'number') ? maskPhoneForAudit(v) : v));
   } catch {
     return String(detail).slice(0, 500);
   }

@@ -10,9 +10,10 @@ const ROUTES = {
   '/percakapan': './pages/percakapan.js',
   '/crm': './pages/crm.js',
   '/bot-tester': './pages/tester.js',
+  '/integrasi': './pages/integrasi.js',
   '/pengaturan': './pages/pengaturan.js',
 };
-const TITLES = { '/pesan': 'Pesan', '/percakapan': 'Percakapan Masuk', '/crm': 'CRM', '/bot-tester': 'Bot Tester', '/pengaturan': 'Pengaturan' };
+const TITLES = { '/pesan': 'Pesan', '/percakapan': 'Percakapan Masuk', '/crm': 'CRM', '/bot-tester': 'Bot Tester', '/integrasi': 'Integrasi', '/pengaturan': 'Pengaturan' };
 let current = null;
 let navId = 0;
 let brand = 'Amnan';

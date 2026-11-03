@@ -2,13 +2,15 @@
 // percobaan ulang, idempotensi, dan tautan prefill bertanda tangan. Tanpa dependensi tambahan.
 import crypto from 'node:crypto';
 import dns from 'node:dns';
+import http from 'node:http';
+import https from 'node:https';
 import net from 'node:net';
 import * as events from './events.js';
 import { load, save } from './jsonfile.js';
 import { HttpError, limiter, ipKey, audit } from './auth.js';
 
 export const CONTRACT = '1';
-export const SCOPES = ['leads:read', 'leads:write', 'messages:send', 'events:write'];
+export const SCOPES = ['leads:read', 'leads:write', 'leads:delete', 'messages:send', 'events:write'];
 export const WEBHOOK_EVENTS = ['ping', 'lead.created', 'lead.hot', 'message.received', 'conversation.attention', 'wa.status'];
 
 const KEYS_FILE = 'connect-keys.json';
@@ -33,9 +35,11 @@ const verr = (message, code = 'VALIDATION', status = 400) => Object.assign(new H
 
 // ---------------------------------------------------------------- Dependensi yang bisa diganti di tes
 
-let fetchFn = (...a) => globalThis.fetch(...a);
+const DEFAULT_FETCH = (...a) => globalThis.fetch(...a);
+let fetchFn = DEFAULT_FETCH;
 let lookupFn = (host) => dns.promises.lookup(host, { all: true });
-export const setFetch = (f) => { fetchFn = f || ((...a) => globalThis.fetch(...a)); };
+export const setFetch = (f) => { fetchFn = f || DEFAULT_FETCH; };
+export const usingDefaultFetch = () => fetchFn === DEFAULT_FETCH;
 export const setLookup = (f) => { lookupFn = f || ((host) => dns.promises.lookup(host, { all: true })); };
 
 // ---------------------------------------------------------------- API key
@@ -209,10 +213,14 @@ export function verifySignature(secret, ts, body, header, { toleranceSec = 300, 
 
 // ---------------------------------------------------------------- Tautan prefill {booking}
 
-const linkSecret = () => process.env.BOOKING_LINK_SECRET || '';
-const bookingBase = () => String(process.env.BOOKING_URL || '').replace(/\/+$/, '');
+// Sambungan Booking dari menu Integrasi disimpan di data/connect-booking.json (ikut terenkripsi bila DATA_KEY aktif)
+// dan menang atas .env; .env (BOOKING_URL / BOOKING_LINK_SECRET) tetap bekerja sebagai cadangan.
+const BOOKING_FILE = 'connect-booking.json';
+const readBooking = () => { try { return load(BOOKING_FILE, null) || null; } catch { return null; } };
+const linkSecret = () => readBooking()?.linkSecret || process.env.BOOKING_LINK_SECRET || '';
+const bookingBase = () => String(readBooking()?.url || process.env.BOOKING_URL || '').replace(/\/+$/, '');
 
-export function signLink(secret, { phone, name = '', ttlHours = 48, now = Date.now() }) {
+export function signLink(secret, { phone, name = '', ttlHours = 12, now = Date.now() }) {
   const payload = b64u(JSON.stringify({ p: String(phone), n: String(name).slice(0, 60), exp: Math.floor(now / 1000) + Math.round(ttlHours * 3600) }));
   const mac = b64u(crypto.createHmac('sha256', secret).update(payload).digest());
   return `${payload}.${mac}`;
@@ -222,9 +230,61 @@ export function signLink(secret, { phone, name = '', ttlHours = 48, now = Date.n
 export function bookingLink(conv) {
   const base = bookingBase();
   const secret = linkSecret();
-  if (!/^https?:\/\//i.test(base) || !secret || !conv?.phone || !/^\d{8,15}$/.test(String(conv.phone))) return null;
-  const ttl = Number(process.env.BOOKING_LINK_TTL_HOURS) > 0 ? Number(process.env.BOOKING_LINK_TTL_HOURS) : 48;
+  if (!/^https?:\/\//i.test(base) || secret.length < 16 || !conv?.phone || !/^\d{8,15}$/.test(String(conv.phone))) return null;
+  const ttl = Math.min(Number(process.env.BOOKING_LINK_TTL_HOURS) > 0 ? Number(process.env.BOOKING_LINK_TTL_HOURS) : 12, 24); // bawaan 12 jam, maks 24 (Booking menolak > 24 jam)
   return `${base}/?c=${signLink(secret, { phone: conv.phone, name: conv.name || '', ttlHours: ttl })}`;
+}
+
+/** URL http(s) tanpa query/hash -> tanpa "/" akhir, selain itu galat validasi. */
+function cleanBase(raw, label) {
+  const s = str(raw, 300);
+  let u;
+  try { u = new URL(s); } catch { throw verr(`${label} tidak valid (contoh: https://book.klinik.com)`); }
+  if (!/^https?:$/.test(u.protocol) || !u.hostname || u.search || u.hash || u.username || u.password) throw verr(`${label} harus berupa alamat http(s) tanpa tambahan apa pun di belakangnya`);
+  return `${u.origin}${u.pathname}`.replace(/\/+$/, '');
+}
+
+export function bookingStatus() {
+  const b = readBooking();
+  const key = b?.keyId ? readKeys().find((k) => k.id === b.keyId) : null;
+  const hook = b?.webhookId ? readHooks().find((w) => w.id === b.webhookId) : null;
+  return {
+    connected: !!(b && key && !key.revokedAt),
+    bookingUrl: b?.url || '', connectedAt: b?.connectedAt || null,
+    key: key ? { id: key.id, lastUsedAt: key.lastUsedAt || null, revokedAt: key.revokedAt || null } : null,
+    webhook: hook ? { id: hook.id, active: hook.active, lastStatus: hook.lastStatus || null, lastAt: hook.lastAt || null, failures: hook.failures || 0 } : null,
+    fromEnv: !b && !!(process.env.BOOKING_URL && process.env.BOOKING_LINK_SECRET),
+  };
+}
+
+/**
+ * Hubungkan Booking Live dengan satu langkah: membuat API key (scope lengkap), webhook ke Booking, dan rahasia tautan,
+ * lalu mengembalikan SATU kode sambungan yang tinggal ditempel di menu Integrasi Booking. Memutus sambungan lama lebih dulu.
+ */
+export function connectBooking({ bookingUrl, amnanUrl, createdBy = '-' } = {}) {
+  const bUrl = cleanBase(bookingUrl, 'Alamat Booking');
+  const aUrl = cleanBase(amnanUrl, 'Alamat Amnan');
+  const hookUrl = checkWebhookUrl(`${bUrl}/api/integrations/amnan/webhook`); // gagal lebih awal (mis. bukan https) sebelum membuat apa pun
+  disconnectBooking();
+  const { key, token } = createKey({ name: 'Booking Live', app: 'booking', scopes: ['leads:read', 'leads:write', 'leads:delete', 'messages:send', 'events:write'], createdBy });
+  let webhook, secret;
+  try {
+    ({ webhook, secret } = createWebhook({ name: 'Booking Live', url: hookUrl, events: ['lead.created', 'lead.hot'] }));
+  } catch (e) { revokeKey(key.id); throw e; }
+  const link = b64u(crypto.randomBytes(32));
+  save(BOOKING_FILE, { url: bUrl, linkSecret: link, keyId: key.id, webhookId: webhook.id, connectedAt: new Date().toISOString() });
+  const code = 'AMN1.' + b64u(JSON.stringify({ u: aUrl, k: token, w: secret, l: link }));
+  return { code, status: bookingStatus() };
+}
+
+/** Putuskan: cabut key, hapus webhook, lupakan alamat Booking. Aman dipanggil walau belum tersambung. */
+export function disconnectBooking() {
+  const b = readBooking();
+  if (!b) return false;
+  try { if (b.keyId && readKeys().some((k) => k.id === b.keyId && !k.revokedAt)) revokeKey(b.keyId); } catch { /* sudah tidak ada */ }
+  try { if (b.webhookId && readHooks().some((w) => w.id === b.webhookId)) removeWebhook(b.webhookId); } catch { /* sudah tidak ada */ }
+  save(BOOKING_FILE, null);
+  return true;
 }
 
 // ---------------------------------------------------------------- Langganan webhook
@@ -279,6 +339,31 @@ async function assertDeliverable(urlStr) {
   const host = new URL(urlStr).hostname.replace(/^\[|\]$/g, '');
   const addrs = net.isIP(host) ? [{ address: host }] : await lookupFn(host);
   if (!addrs.length || addrs.some((a) => ipBlocked(a.address))) throw new Error('alamat tujuan bukan alamat publik');
+}
+
+/**
+ * POST ke URL luar dengan IP hasil DNS DIKUNCI: alamat divalidasi publik lalu soket dibuka ke alamat itu juga, jadi DNS
+ * rebinding antara "cek" dan "kirim" tidak mungkin. Pengalihan (redirect) tidak diikuti. -> { status }
+ */
+export async function pinnedPost(urlStr, { headers = {}, body = '', timeoutMs = DELIVER_TIMEOUT_MS } = {}) {
+  const u = new URL(urlStr);
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const addrs = net.isIP(host) ? [{ address: host, family: net.isIP(host) }] : await lookupFn(host);
+  if (!envOn('CONNECT_ALLOW_PRIVATE_URLS') && (!addrs.length || addrs.some((a) => ipBlocked(a.address)))) throw new Error('alamat tujuan bukan alamat publik');
+  const pick = addrs[0];
+  const family = pick.family || net.isIP(pick.address);
+  const payload = Buffer.from(body);
+  return new Promise((resolve, reject) => {
+    const req = (u.protocol === 'https:' ? https : http).request({
+      hostname: host, port: u.port || undefined, path: u.pathname + u.search, method: 'POST', timeout: timeoutMs,
+      headers: { ...headers, host: u.host, 'content-length': payload.length },
+      servername: net.isIP(host) ? undefined : host,
+      lookup: (_h, o, cb) => (o && o.all ? cb(null, [{ address: pick.address, family }]) : cb(null, pick.address, family)),
+    }, (res) => { res.resume(); res.on('end', () => resolve({ status: res.statusCode })); res.on('error', reject); });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    req.end(payload);
+  });
 }
 
 export function createWebhook({ name, url, events: evs } = {}) {
@@ -360,20 +445,20 @@ async function attempt(item) {
   const w = readHooks().find((x) => x.id === item.webhookId);
   if (!w || !w.active) return { drop: true };
   try {
-    await assertDeliverable(w.url);
     const ts = Math.floor(Date.now() / 1000);
-    const res = await fetchFn(w.url, {
-      method: 'POST',
-      redirect: 'manual', // jangan mengikuti pengalihan (anti-SSRF)
-      signal: AbortSignal.timeout(DELIVER_TIMEOUT_MS),
-      headers: {
-        'content-type': 'application/json', 'user-agent': 'Amnan-Connect/1',
-        'x-amnan-event': item.type, 'x-amnan-delivery': item.id, 'x-amnan-timestamp': String(ts),
-        'x-amnan-signature': signPayload(w.secret, ts, item.body),
-      },
-      body: item.body,
-    });
-    try { await res.arrayBuffer?.(); } catch { /* badan respons tidak dipakai */ }
+    const headers = {
+      'content-type': 'application/json', 'user-agent': 'Amnan-Connect/1',
+      'x-amnan-event': item.type, 'x-amnan-delivery': item.id, 'x-amnan-timestamp': String(ts),
+      'x-amnan-signature': signPayload(w.secret, ts, item.body),
+    };
+    let res;
+    if (fetchFn === DEFAULT_FETCH) {
+      res = await pinnedPost(w.url, { headers, body: item.body }); // produksi: IP terkunci (anti DNS rebinding)
+    } else {
+      await assertDeliverable(w.url); // jalur fetch yang diganti (tes)
+      res = await fetchFn(w.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(DELIVER_TIMEOUT_MS), headers, body: item.body });
+      try { await res.arrayBuffer?.(); } catch { /* badan respons tidak dipakai */ }
+    }
     return res.status >= 200 && res.status < 300 ? { ok: true, status: res.status } : { ok: false, status: res.status, error: `HTTP ${res.status}` };
   } catch (e) {
     return { ok: false, error: String(e?.message || e).slice(0, 200) };

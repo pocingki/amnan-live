@@ -8,6 +8,7 @@ import * as settings from '../settings.js';
 import * as connect from '../connect.js';
 import { normPhone } from '../bot-validate.js';
 import { emit } from '../events.js';
+import * as retention from '../retention.js';
 
 const CONTACT = /^\/api\/v1\/contacts\/([^/]+)$/;
 const MAX_NOTES = 200;
@@ -20,9 +21,11 @@ const okRes = (body, status = 200) => ({ status, body });
 
 const findLead = (phone, conv) => store.findByPhone(phone) || (conv?.lid && store.findByLid?.(conv.lid)) || null;
 
-function publicContact(lead) {
+/** `apps` hanya memuat data milik aplikasi pemanggil (data aplikasi lain tidak boleh terbaca lewat kunci ini). */
+function publicContact(lead, appName) {
+  const mine = appName && lead.apps && lead.apps[appName] ? { [appName]: lead.apps[appName] } : {};
   return {
-    phone: lead.phone, name: lead.name || '', status: lead.status, apps: lead.apps || {},
+    phone: lead.phone, name: lead.name || '', status: lead.status, apps: mine,
     createdAt: lead.createdAt ?? null, lastContactAt: lead.lastCustomerMessageAt ?? lead.lastMessageAt ?? null,
   };
 }
@@ -42,6 +45,17 @@ function cleanAppData(data) {
 }
 
 const bad = (m) => err(400, 'VALIDATION', m);
+
+/** DELETE /api/v1/contacts/:phone (scope leads:delete): hak hapus, menghapus lead + percakapan + pesan + media satu pelanggan. */
+function deleteContact(ctx, phoneRaw) {
+  let phone;
+  try { phone = normPhone(decodeURIComponent(phoneRaw)); } catch { phone = null; }
+  if (!phone) return bad('Nomor tidak valid (8-15 digit)');
+  const r = retention.deleteCustomer(phone);
+  ctx.audit('v1.contact.hapus', { phone, app: ctx.app.app, ditemukan: r.found });
+  if (!r.found) return err(404, 'NOT_FOUND', 'Kontak tidak ditemukan');
+  return okRes({ ok: true, deleted: { leads: r.leads, messages: r.messages, media: r.media } });
+}
 
 function addNote(lead, app, text) {
   const notes = Array.isArray(lead.notes) ? lead.notes : [];
@@ -76,7 +90,7 @@ function putContact(ctx, phoneRaw, b) {
   if (Object.keys(patch).length) lead = store.update(lead.id, patch);
   if (note) addNote(lead, ctx.app, note);
   ctx.audit('v1.contact.put', { phone, app: ctx.app.app, baru: created });
-  return okRes({ contact: publicContact(store.findByPhone(phone) || lead), created }, created ? 201 : 200);
+  return okRes({ contact: publicContact(store.findByPhone(phone) || lead, ctx.app.app), created }, created ? 201 : 200);
 }
 
 async function sendMessage(ctx, b) {
@@ -107,6 +121,11 @@ async function sendMessage(ctx, b) {
       ctx.audit('v1.message.gagal', { phone, kode: e?.code || 'ERR' });
       return err(unavailable ? 503 : 502, unavailable ? 'WA_UNAVAILABLE' : 'SEND_FAILED', unavailable ? e.message : 'Gagal mengirim pesan WhatsApp');
     }
+  }
+  if (b.sensitive === true) {
+    // Pesan sensitif (mis. kode OTP): terkirim, tetapi TIDAK disimpan di percakapan dan tidak membuat percakapan baru.
+    ctx.audit('v1.message.kirim', { phone, app: ctx.app.app, sensitif: true, dryRun: dry || undefined });
+    return okRes({ ok: true, waId: waId || null, conversation: null, dryRun: dry, stored: false });
   }
   if (!conv) conv = C.getOrCreate(phone, jid, String(b.name ?? '').trim().slice(0, 100)).conv;
   const m = C.addMessage(conv, 'bot', text, Date.now());
@@ -175,7 +194,12 @@ export async function handle(req, res, url, ctx) {
     const phone = normPhone(decodeURIComponent(cm[1]));
     if (!phone) return send(bad('Nomor tidak valid (8-15 digit)'));
     const lead = findLead(phone, C.get(phone));
-    return send(lead ? okRes({ contact: publicContact(lead) }) : err(404, 'NOT_FOUND', 'Kontak tidak ditemukan'));
+    return send(lead ? okRes({ contact: publicContact(lead, ctx.app.app) }) : err(404, 'NOT_FOUND', 'Kontak tidak ditemukan'));
+  }
+
+  if (cm && m === 'DELETE') {
+    if (!need('leads:delete')) return true;
+    return send(deleteContact(ctx, cm[1]));
   }
 
   const writes = (cm && m === 'PUT') ? 'leads:write' : (p === '/api/v1/messages' && m === 'POST') ? 'messages:send' : (p === '/api/v1/events' && m === 'POST') ? 'events:write' : null;

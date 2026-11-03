@@ -26,6 +26,24 @@ export async function handle(req, res, url, ctx) {
     });
   }
 
+  if (p === '/api/integrations/booking') {
+    if (m === 'GET') return send(200, connect.bookingStatus());
+    if (m === 'POST') {
+      return guard(async () => {
+        const b = await ctx.readBody(req);
+        const r = connect.connectBooking({ bookingUrl: b.bookingUrl, amnanUrl: b.amnanUrl, createdBy: ctx.user.name });
+        ctx.audit('integrasi.booking.hubungkan', { url: r.status.bookingUrl, kunci: r.status.key?.id });
+        return send(201, r);
+      });
+    }
+    if (m === 'DELETE') {
+      const had = connect.disconnectBooking();
+      ctx.audit('integrasi.booking.putuskan', { ada: had });
+      return send(200, { ok: true, disconnected: had });
+    }
+    return false;
+  }
+
   if (p === '/api/integrations/keys' && m === 'POST') {
     return guard(async () => {
       const b = await ctx.readBody(req);

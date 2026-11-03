@@ -294,3 +294,77 @@ test('audit mencatat tindakan aplikasi dan pembuatan kunci tanpa rahasia', async
   assert.ok(entries.some((e) => e.action === 'v1.auth.gagal'));
   assert.ok(!JSON.stringify(entries).includes('amk_'), 'token tidak pernah masuk audit');
 });
+
+// ---- perbaikan keamanan
+test('pesan sensitif (OTP): terkirim tetapi tidak disimpan di percakapan dan tidak membuat percakapan baru', async () => {
+  const { token } = await newKey(['messages:send']);
+  const phone = '6281200000090';
+  const r = await v1(token, 'POST', '/api/v1/messages', { phone, text: 'Kode verifikasi Klinik: 123456. Berlaku 10 menit.', sensitive: true });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.stored, false);
+  const basic = new Client(srv.base, { mode: 'basic' });
+  assert.equal((await basic.get(`/api/conversations/${phone}`)).status, 404, 'tidak ada percakapan baru');
+  const audit = (await basic.get('/api/audit?q=v1.message.kirim')).text;
+  assert.ok(!audit.includes('123456'), 'kode tidak masuk audit');
+  assert.ok(!audit.includes(phone), 'nomor utuh tidak masuk audit');
+});
+
+test('hapus kontak: butuh scope leads:delete; menghapus lead dan percakapan; 404 bila tidak ada; audit tanpa nomor utuh', async () => {
+  const { token: w } = await newKey(['leads:write', 'messages:send']);
+  const { token: d } = await newKey(['leads:delete']);
+  const phone = '6281200000091';
+  await v1(w, 'PUT', `/api/v1/contacts/${phone}`, { name: 'Hapus Aku' });
+  await v1(w, 'POST', '/api/v1/messages', { phone, text: 'halo' });
+  assert.equal((await v1(w, 'DELETE', `/api/v1/contacts/${phone}`)).status, 403, 'tanpa scope ditolak');
+  const r = await v1(d, 'DELETE', `/api/v1/contacts/${phone}`);
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.ok(r.json.deleted.leads >= 1);
+  const basic = new Client(srv.base, { mode: 'basic' });
+  assert.equal((await basic.get(`/api/conversations/${phone}`)).status, 404);
+  assert.equal((await v1(d, 'DELETE', `/api/v1/contacts/${phone}`)).status, 404);
+  assert.equal((await v1(d, 'DELETE', `/api/v1/contacts/12`)).status, 400);
+  assert.ok(!(await basic.get('/api/audit?q=v1.contact.hapus')).text.includes(phone), 'nomor utuh tidak masuk audit');
+});
+
+test('kontak: kunci hanya melihat data aplikasinya sendiri di apps', async () => {
+  const { token: a } = await newKey(['leads:read', 'leads:write']);
+  const rb = await admin.post('/api/integrations/keys', { name: 'Aplikasi Lain', app: 'lain', scopes: ['leads:read', 'leads:write'] });
+  const b = rb.json.token;
+  const phone = '6281200000092';
+  await v1(a, 'PUT', `/api/v1/contacts/${phone}`, { name: 'Dua App', data: { rahasiaBooking: 'x1' } });
+  await v1(b, 'PUT', `/api/v1/contacts/${phone}`, { data: { rahasiaLain: 'y2' } });
+  const seenByA = (await v1(a, 'GET', `/api/v1/contacts/${phone}`)).json.contact.apps;
+  assert.ok(seenByA.booking && !seenByA.lain, JSON.stringify(seenByA));
+  const seenByB = (await v1(b, 'GET', `/api/v1/contacts/${phone}`)).json.contact.apps;
+  assert.ok(seenByB.lain && !seenByB.booking, JSON.stringify(seenByB));
+});
+
+test('hubungkan Booking: satu kode berisi key+webhook+rahasia tautan; status; hubungkan ulang mencabut yang lama; putuskan', async () => {
+  const r = await admin.post('/api/integrations/booking', { bookingUrl: `http://127.0.0.1:${rxPort}`, amnanUrl: 'http://127.0.0.1:9' });
+  assert.equal(r.status, 201, r.text);
+  assert.match(r.json.code, /^AMN1\./);
+  const d = JSON.parse(Buffer.from(r.json.code.slice(5), 'base64url').toString());
+  assert.equal(d.u, 'http://127.0.0.1:9');
+  assert.match(d.k, /^amk_[0-9a-f]{8}\./);
+  assert.match(d.w, /^whsec_/);
+  assert.ok(d.l.length >= 32);
+  // key dari kode benar-benar bekerja dan punya scope lengkap termasuk hapus kontak
+  const ping = await v1(d.k, 'GET', '/api/v1/ping');
+  assert.equal(ping.status, 200);
+  assert.ok(ping.json.app.scopes.includes('leads:delete') && ping.json.app.scopes.includes('messages:send'));
+  const st = (await admin.get('/api/integrations/booking')).json;
+  assert.equal(st.connected, true);
+  assert.equal(st.bookingUrl, `http://127.0.0.1:${rxPort}`);
+  assert.ok(!JSON.stringify(st).includes(d.k.split('.')[1]), 'status tidak membocorkan rahasia');
+  // hubungkan ulang: key lama dicabut
+  const r2 = await admin.post('/api/integrations/booking', { bookingUrl: `http://127.0.0.1:${rxPort}`, amnanUrl: 'http://127.0.0.1:9' });
+  assert.equal(r2.status, 201);
+  assert.equal((await v1(d.k, 'GET', '/api/v1/ping')).status, 401, 'key lama dicabut');
+  // validasi
+  assert.equal((await admin.post('/api/integrations/booking', { bookingUrl: 'bukan url', amnanUrl: 'http://127.0.0.1:9' })).status, 400);
+  // putuskan
+  const d2 = JSON.parse(Buffer.from(r2.json.code.slice(5), 'base64url').toString());
+  assert.equal((await admin.req('DELETE', '/api/integrations/booking')).status, 200);
+  assert.equal((await v1(d2.k, 'GET', '/api/v1/ping')).status, 401);
+  assert.equal((await admin.get('/api/integrations/booking')).json.connected, false);
+});

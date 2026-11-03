@@ -2,6 +2,7 @@
 // Tulis atomik + fsync. Berkas rusak TIDAK pernah ditimpa diam-diam: dipindah ke
 // <nama>.corrupt-<waktu>, dipulihkan dari <nama>.bak bila ada, dan bila tidak ada
 // yang bisa dipulihkan penulisan nama itu diblokir sampai operator mengonfirmasi.
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -53,8 +54,42 @@ function quarantineCopy(file) {
   return q;
 }
 
+// ---- enkripsi opsional berkas JSON (DATA_KEY): kunci pengguna, sesi, pengaturan (termasuk token Telegram), rahasia webhook,
+// antrean webhook, dsb. tidak tersimpan sebagai teks polos. Tanpa DATA_KEY perilaku lama. Berkas lama (polos) tetap terbaca
+// dan dienkripsi pada penyimpanan berikutnya. Kunci turunan berbeda dari enkripsi database (info 'json').
+let jctx = null;
+function jsonKey() {
+  const raw = process.env.DATA_KEY || '';
+  if (!raw) return null;
+  if (jctx?.raw === raw) return jctx.key;
+  const master = /^[0-9a-f]{64}$/i.test(raw) ? Buffer.from(raw, 'hex') : crypto.scryptSync(raw, 'amnan-live/data-key/v1', 32);
+  jctx = { raw, key: Buffer.from(crypto.hkdfSync('sha256', master, Buffer.alloc(0), 'json', 32)) };
+  return jctx.key;
+}
+function wrapEncrypted(text) {
+  const key = jsonKey();
+  if (!key) return text;
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([c.update(text, 'utf8'), c.final()]);
+  return JSON.stringify({ __enc: 'e1', v: Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64') });
+}
+function unwrap(parsed) {
+  if (!parsed || typeof parsed !== 'object' || parsed.__enc !== 'e1') return parsed;
+  const key = jsonKey();
+  if (!key) throw Object.assign(new Error('Berkas terenkripsi tetapi DATA_KEY tidak diset'), { keyProblem: true });
+  try {
+    const buf = Buffer.from(String(parsed.v), 'base64');
+    const d = crypto.createDecipheriv('aes-256-gcm', key, buf.subarray(0, 12));
+    d.setAuthTag(buf.subarray(12, 28));
+    return JSON.parse(Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8'));
+  } catch {
+    throw Object.assign(new Error('Berkas tidak bisa didekripsi (DATA_KEY salah?)'), { keyProblem: true });
+  }
+}
+
 function readJson(file) {
-  return JSON.parse(fs.readFileSync(file, 'utf8'));
+  return unwrap(JSON.parse(fs.readFileSync(file, 'utf8')));
 }
 
 /**
@@ -67,6 +102,8 @@ export function load(name, fallback, opts = {}) {
   try {
     return readJson(file);
   } catch (e) {
+    // Masalah kunci (DATA_KEY hilang/salah) BUKAN kerusakan berkas: jangan karantina atau timpa, hentikan dengan pesan jelas.
+    if (e?.keyProblem) throw new Error(`${name}: ${e.message}`);
     const q = quarantineCopy(file);
     console.error(`[jsonfile] ${name} RUSAK (${e.message}). Salinan untuk pemeriksaan: ${path.basename(q)}`);
     status.set(name, { corrupt: true, quarantinedTo: q });
@@ -95,13 +132,21 @@ export function save(name, data) {
   const tmp = `${file}.tmp-${process.pid}`;
   const fd = fs.openSync(tmp, 'w', 0o600);
   try {
-    fs.writeFileSync(fd, JSON.stringify(data, null, 2));
+    fs.writeFileSync(fd, wrapEncrypted(JSON.stringify(data, null, 2)));
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
   }
   if (fs.existsSync(file)) {
-    try { fs.copyFileSync(file, `${file}.bak`); secureFile(`${file}.bak`); } catch { /* cadangan best-effort */ }
+    try {
+      if (jsonKey()) { // cadangan ikut terenkripsi (berkas lama yang masih polos dienkripsi saat disalin)
+        const old = fs.readFileSync(file, 'utf8');
+        let enc = false;
+        try { enc = JSON.parse(old)?.__enc === 'e1'; } catch { /* rusak: salin apa adanya */ }
+        fs.writeFileSync(`${file}.bak`, enc ? old : wrapEncrypted(old), { mode: 0o600 });
+      } else fs.copyFileSync(file, `${file}.bak`);
+      secureFile(`${file}.bak`);
+    } catch { /* cadangan best-effort */ }
   }
   fs.renameSync(tmp, file);
   secureFile(file);

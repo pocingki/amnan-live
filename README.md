@@ -1242,3 +1242,5 @@ Dokumentasi proyek yang juga perlu dibaca:
 - `docs/KONTRAK.md`
 
 **Catatan batas dokumentasi:** langkah domain, HTTPS, firewall, pemasangan Node.js di VPS, dan autentikasi SSH bergantung pada provider serta kondisi VPS masing-masing. Perintah di atas memberikan alur umum untuk Ubuntu/Debian, bukan konfigurasi spesifik semua provider. Jika VPS telah menjalankan aplikasi lain, jangan mengubah Node.js global, PM2, Nginx, Caddy, firewall, atau sertifikat tanpa memeriksa dampaknya terlebih dahulu.
+
+- Perbaikan keamanan terbaru: lihat docs/PERBAIKAN-KEAMANAN.md.
