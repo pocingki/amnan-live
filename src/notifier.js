@@ -1,5 +1,6 @@
-// Notifikasi operasional lewat webhook / Telegram (settings.notify). Tidak pernah mengirim isi
-// pesan: hanya nama dan nomor tersamar + tautan dashboard. Gagal kirim tidak melempar error.
+// Notifikasi operasional ke Telegram (settings.notify). Webhook HTTP ke aplikasi lain hanya lewat
+// Amnan Connect (menu Integrasi), supaya kejadian yang sama tidak terkirim dua kali.
+// Tidak pernah mengirim isi pesan: hanya nama dan nomor tersamar + tautan dashboard. Gagal kirim tidak melempar error.
 import * as events from './events.js';
 import * as C from './conversations.js';
 import * as settings from './settings.js';
@@ -72,9 +73,6 @@ export async function notify(kind, { title, text, url = '', name = '', phone = '
     const n = cfg();
     const msg = [`${brand()}: ${title}`, text, url].filter(Boolean).join('\n');
     const jobs = [];
-    if (/^https?:\/\//i.test(n.webhookUrl || '')) {
-      jobs.push(post(n.webhookUrl, { event: kind, title, text, name, phone, url, ts: now }));
-    }
     if (n.telegramBotToken && n.telegramChatId) {
       jobs.push(post(`https://api.telegram.org/bot${n.telegramBotToken}/sendMessage`,
         { chat_id: n.telegramChatId, text: msg, disable_web_page_preview: true }));

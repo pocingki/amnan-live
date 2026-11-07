@@ -41,8 +41,9 @@ export async function handle(req, res, url, ctx) {
     try {
       const file = D.backupNow({ force: true });
       if (!file) { ctx.sendJSON(res, 409, { error: 'Cadangan tidak dibuat (penulisan database sedang dihentikan)' }); return true; }
-      ctx.audit('data.backup', { file: path.basename(file) });
-      ctx.sendJSON(res, 200, { ok: true, file: path.basename(file) });
+      const snapshot = D.backupDataSnapshot({ force: true, dbFile: file });
+      ctx.audit('data.backup', { file: path.basename(file), snapshot: snapshot ? path.basename(snapshot) : null });
+      ctx.sendJSON(res, 200, { ok: true, file: path.basename(file), snapshot: snapshot ? path.basename(snapshot) : null });
     } catch (e) {
       console.error('[data] cadangan gagal:', e.message);
       ctx.sendJSON(res, 500, { error: 'Cadangan gagal' });

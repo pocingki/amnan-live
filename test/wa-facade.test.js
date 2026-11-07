@@ -114,13 +114,26 @@ for (const adapter of [
   connOpts.onReceipts([{ waId: 'a', status: 'sent' }, { waId: 'b', status: 'read' }]);
   assert.deepEqual(log.status.map((u) => u.waId), ['a', 'b']);
 }
-// 11. handleIncoming melempar -> tidak crash; handleMessage tidak melempar
+// 11. handleIncoming melempar -> tidak crash; pesan TIDAK ditandai seen supaya pengiriman ulang diproses lagi
 {
   const { f, log } = setup({ throwBot: true });
   await f.handleMessage(msg()); assert.equal(log.incoming.length, 1);
+  assert.equal(log.seen.has('W1'), false);
+  await f.handleMessage(msg()); assert.equal(log.incoming.length, 2);
   const g = setup({ deps: { resolveIdentity: async () => { throw new Error('id'); } } });
   await g.f.handleMessage(msg());
+  assert.equal(g.log.seen.has('W1'), false);
   assert.equal(await f.handleMessage(null), undefined);
+}
+// 11b. sukses baru menandai seen; teks kosong yang sengaja diabaikan juga ditandai supaya tidak diulang
+{
+  const ok = setup();
+  await ok.f.handleMessage(msg());
+  assert.equal(ok.log.seen.has('W1'), true);
+  const empty = setup({ deps: { extractMessage: () => ({ kind: 'text', text: '  ', caption: '', hasMedia: false }) } });
+  await empty.f.handleMessage(msg({ key: { id: 'EMPTY' } }));
+  assert.equal(empty.log.seen.has('EMPTY'), true);
+  assert.equal(empty.log.incoming.length, 0);
 }
 // 12. emit status + onMessages berurutan + pesan terdedup per id
 {

@@ -9,6 +9,7 @@ services:
     environment:
       DATA_DIR: /data
       PORT: "8080"
+      BIND_HOST: "0.0.0.0"
     # Hanya dibuka ke localhost; akses publik lewat reverse proxy / tunnel (set TRUST_PROXY=1 di .env).
     ports:
       - "127.0.0.1:8080:8080"

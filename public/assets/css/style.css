@@ -37,7 +37,22 @@ body.modal-open { overflow: hidden; }
 i.fa-solid, i.fa-regular, i.fa-brands { display: none; } /* sisa ikon Font Awesome (CDN dihapus karena CSP) */
 
 /* ---- Header ---- */
+/* Header: di bawah 1024px menu mengisi sisa lebar dan bisa digeser.
+   Dari 1024px menu duduk di tengah layar; merek dan status terpotong di kolomnya, tidak menimpa menu. */
+.app-header-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+#brand-link { overflow: hidden; }
+#brand-name, #brand-tagline { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nav { flex-wrap: nowrap; }
+@media (min-width: 768px) {
+  .app-header-row { height: auto; min-height: 4rem; }
+}
+@media (min-width: 1024px) {
+  .app-header-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); column-gap: 1rem; }
+  #nav { justify-content: center; }
+  .app-header-tools .wa-badge { min-width: 0; overflow: hidden; }
+}
 .nav-link { padding: .5rem .85rem; border-radius: .5rem; color: var(--text-soft); white-space: nowrap; }
+@media (max-width: 1024px) { .nav-link { padding: .5rem .6rem; } }
 .nav-link:hover { background: var(--brand-50); color: var(--brand); }
 .nav-link.active { background: var(--brand-50); color: var(--brand); box-shadow: inset 0 -2px 0 var(--brand); }
 .nav-badge { margin-left: 6px; background: var(--brand); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; line-height: 18px; display: inline-block; }
@@ -47,9 +62,11 @@ i.fa-solid, i.fa-regular, i.fa-brands { display: none; } /* sisa ikon Font Aweso
 .wa-ok { background: #f0fdf4; color: #166534; border-color: #86efac; }
 .wa-warn { background: #fffbeb; color: #92400e; border-color: #fcd34d; }
 .wa-bad { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
+.wa-off { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
 .wa-long { display: none; }
 .wa-short { display: inline; }
 @media (min-width: 768px) { .wa-long { display: inline; } .wa-short { display: none; } }
+@media (min-width: 1024px) { .wa-long { display: block; overflow: hidden; text-overflow: ellipsis; } }
 .avatar-menu { position: absolute; right: 0; margin-top: .5rem; width: 15rem; background: #fff; border: 1px solid #e5e7eb; border-radius: .75rem; box-shadow: 0 10px 25px rgba(0,0,0,.12); padding: .25rem 0; z-index: 50; font-size: 14px; }
 
 .card { background: #fff; border: 1px solid #e5e7eb; border-radius: .75rem; padding: 1.5rem; box-shadow: 0 1px 2px rgba(8,50,132,.05); }
@@ -175,7 +192,7 @@ a.b-file:hover { background: rgba(0,0,0,.1); }
 .sys-row { text-align: center; margin: 8px 0; }
 .sys-chip { display: inline-flex; align-items: center; gap: 6px; background: #fef9c3; color: #713f12; border-radius: 8px; padding: 4px 10px; font-size: 12px; max-width: 90%; text-align: left; box-shadow: 0 1px .5px rgba(11,20,26,.13); }
 
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
   .wa-list { width: 100%; border-right: 0; }
   .wa-split .wa-pane { display: none; }
   .wa-split.open .wa-list { display: none; }
@@ -183,4 +200,161 @@ a.b-file:hover { background: rgba(0,0,0,.1); }
   .wa-back { display: block; }
   .wa-split { height: calc(100vh - 190px); }
   .bubble { max-width: 90%; }
+}
+
+/* Mode ponsel, sama seperti Acesio: ikut lebar layar (≤760px), bukan merek perangkat.
+   Di atas 760px menu tetap di header dan desktop tidak berubah. */
+.os-tabbar { display: none; }
+.os-tabbar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 760px) {
+  header { padding-top: env(safe-area-inset-top); }
+  .app-header-row { grid-template-columns: minmax(0, 1fr) auto; min-height: 56px; }
+  #brand-name { font-size: 20px; }
+  #nav { display: none !important; }
+  #view {
+    padding-top: 16px;
+    padding-left: max(16px, env(safe-area-inset-left));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: 16px;
+  }
+  #view h1 { font-size: 24px; }
+  footer { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+
+  .os-tabbar {
+    display: flex;
+    position: fixed;
+    z-index: 40;
+    left: 0; right: 0; bottom: 0;
+    gap: 8px;
+    padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    background: #fff;
+    border-top: 1px solid #e5e7eb;
+    box-shadow: 0 -6px 20px rgba(6, 23, 74, .08);
+  }
+  .os-tabbar .nav-link {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 8px 4px;
+    border-radius: 12px;
+    background: none;
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.15;
+    box-shadow: none;
+  }
+  .os-tabbar .nav-link span {
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .os-tabbar .nav-link.active { color: var(--brand); background: var(--brand-50); box-shadow: none; }
+  .os-tabbar .nav-badge { position: absolute; top: 2px; margin-left: 18px; }
+
+  .dialog-backdrop { align-items: flex-end; padding: 0; }
+  .dialog-box {
+    max-width: none;
+    max-height: min(92dvh, 100%);
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+  .dialog-title { position: sticky; top: 0; background: #fff; z-index: 1; padding-bottom: 8px; }
+  .dialog-actions { flex-direction: column; align-items: stretch; }
+  .dialog-actions button,
+  .dialog-actions a { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; }
+
+  .toast-host { bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .pop-menu {
+    top: auto !important;
+    bottom: calc(72px + env(safe-area-inset-bottom));
+    left: 0 !important;
+    right: 0;
+    width: 100% !important;
+    min-width: 0;
+    max-height: min(70dvh, calc(100dvh - 120px));
+    overflow-y: auto;
+    border-radius: 18px 18px 0 0;
+    padding-top: 8px;
+  }
+  .pop-menu::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: 2px auto 8px;
+    border-radius: 4px;
+    background: #d1d5db;
+  }
+  .pop-menu button { min-height: 48px; }
+  #avatar-menu.avatar-menu {
+    position: fixed;
+    top: calc(64px + env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+  #avatar-menu a, #avatar-menu button { min-height: 48px; display: flex; align-items: center; }
+
+  #view button.rounded-lg,
+  #view a.rounded-lg,
+  #view input.rounded-lg,
+  #view select.rounded-lg { min-height: 48px; }
+  #view textarea.rounded-lg { min-height: 96px; }
+  #view input.rounded-lg,
+  #view select.rounded-lg,
+  #view textarea.rounded-lg { font-size: 16px; scroll-margin-bottom: 96px; }
+  .icon-btn, #avatar-btn { width: 48px; height: 48px; }
+  .wa-split { height: calc(100dvh - 250px - env(safe-area-inset-bottom)); }
+
+  html[data-os="ios"] body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif; background: #f2f2f7; }
+  html[data-os="android"] body { font-family: Roboto, "Google Sans", "Segoe UI", system-ui, sans-serif; background: #f5f6f8; }
+  html[data-os="ios"] .card,
+  html[data-os="ios"] .dialog-box,
+  html[data-os="ios"] .search-box,
+  html[data-os="ios"] .form-error,
+  html[data-os="ios"] .warn-box,
+  html[data-os="ios"] .rounded-lg,
+  html[data-os="ios"] .rounded-xl,
+  html[data-os="ios"] .os-tabbar .nav-link {
+    border-radius: 16px;
+    box-shadow: none;
+  }
+  html[data-os="ios"] .card,
+  html[data-os="ios"] .dialog-box { border: 0.5px solid rgba(60, 60, 67, .16); }
+  html[data-os="ios"] header,
+  html[data-os="ios"] .os-tabbar {
+    background: rgba(255, 255, 255, .92);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    backdrop-filter: saturate(180%) blur(16px);
+    box-shadow: none;
+  }
+  html[data-os="ios"] .os-tabbar { border-top: 0.5px solid rgba(60, 60, 67, .29); }
+  html[data-os="android"] .card,
+  html[data-os="android"] .dialog-box,
+  html[data-os="android"] .search-box,
+  html[data-os="android"] .form-error,
+  html[data-os="android"] .warn-box,
+  html[data-os="android"] .rounded-lg,
+  html[data-os="android"] .rounded-xl,
+  html[data-os="android"] .os-tabbar .nav-link { border-radius: 8px; }
+  html[data-os="android"] .card,
+  html[data-os="android"] .dialog-box,
+  html[data-os="android"] .rounded-xl,
+  html[data-os="android"] .os-tabbar {
+    box-shadow: 0 1px 2px rgba(14, 26, 58, .12), 0 2px 8px rgba(14, 26, 58, .08);
+  }
+  html[data-os="android"] .wa-send,
+  html[data-os="android"] button.bg-brand-800 { box-shadow: 0 2px 6px rgba(8, 50, 132, .35); }
 }

@@ -1,4 +1,5 @@
-// Dispatcher API (kontrak K1): memuat src/api/*.js berurutan alfabet, _legacy.js paling akhir.
+// Dispatcher API (kontrak K1): memuat src/api/*.js berurutan alfabet.
+// _legacy.js hanya ikut bila berkasnya ada (uji urutan). Salinan lama di produksi sudah dihapus.
 // Setiap modul mengekspor `async function handle(req, res, url, ctx)` -> true bila sudah menangani.
 import fs from 'node:fs';
 import path from 'node:path';

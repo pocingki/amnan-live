@@ -79,6 +79,17 @@ export function icon(name, cls = 'icon-sm') {
 /* ====================================================================
    HTTP: CSRF (K2), error ramah, api()/send()
    ==================================================================== */
+/** Tampilan status WhatsApp. `disabled` = soket tidak dinyalakan; `disconnected` = soket hidup tetapi putus. */
+export const WA_STATUS = {
+  connected: { cls: 'wa-ok', icon: 'ok', long: 'WA Terhubung', short: 'Terhubung', label: 'TERHUBUNG', tone: 'text-green-800' },
+  qr: { cls: 'wa-warn', icon: 'qr', long: 'Menunggu Scan QR', short: 'Scan QR', label: 'MENUNGGU SCAN QR', tone: 'text-amber-800' },
+  connecting: { cls: 'wa-warn', icon: 'refresh', long: 'Menghubungkan…', short: 'Menyambung', label: 'MENGHUBUNGKAN', tone: 'text-amber-800' },
+  disconnected: { cls: 'wa-bad', icon: 'x-circle', long: 'WA Terputus', short: 'Putus', label: 'TERPUTUS', tone: 'text-red-800' },
+  disabled: { cls: 'wa-off', icon: 'info', long: 'WA Nonaktif', short: 'Nonaktif', label: 'NONAKTIF', tone: 'text-gray-700' },
+  unavailable: { cls: 'wa-off', icon: 'info', long: 'WA Tidak tersedia', short: 'Tidak ada', label: 'TIDAK TERSEDIA', tone: 'text-gray-700' },
+};
+export const waStatusView = (status) => WA_STATUS[status] || WA_STATUS.unavailable;
+
 export function readCookie(name, cookieStr = typeof document !== 'undefined' ? document.cookie : '') {
   for (const part of String(cookieStr).split(';')) {
     const i = part.indexOf('=');
@@ -116,6 +127,36 @@ export function friendlyMessage(status, data) {
 }
 
 const SAFE_METHOD = /^(GET|HEAD|OPTIONS)$/i;
+const PAGE_KEY = 'amnan:page';
+const PAGES = new Set(['/pesan', '/percakapan', '/crm', '/bot-tester', '/integrasi', '/pengaturan']);
+
+function pageStore(storage) {
+  if (storage) return storage;
+  try { return sessionStorage; } catch { return null; }
+}
+
+/** Path dari hash `#/pengaturan?...` -> `/pengaturan`. Hanya rute yang ada. */
+export function pageFromHash(hash) {
+  const path = String(hash || '').replace(/^#/, '').split('?')[0];
+  return PAGES.has(path) ? path : '';
+}
+
+/** Ingat halaman yang sedang dibuka supaya refresh dan login ulang kembali ke situ. */
+export function rememberPage(hash, storage) {
+  const path = pageFromHash(hash);
+  const box = pageStore(storage);
+  if (!path || !box) return '';
+  const saved = '#' + path;
+  try { box.setItem(PAGE_KEY, saved); } catch { return ''; }
+  return saved;
+}
+
+/** Halaman tersimpan, atau string kosong bila tidak ada / tidak dikenal. */
+export function savedPage(storage) {
+  const box = pageStore(storage);
+  if (!box) return '';
+  try { return pageFromHash(box.getItem(PAGE_KEY)) ? '#' + pageFromHash(box.getItem(PAGE_KEY)) : ''; } catch { return ''; }
+}
 
 export async function api(path, opt = {}) {
   const method = String(opt.method || 'GET').toUpperCase();
@@ -131,7 +172,10 @@ export async function api(path, opt = {}) {
     throw new ApiError('Tidak dapat terhubung ke server. Periksa koneksi internet Anda, lalu coba lagi.', { status: 0 });
   }
   if (res.status === 401) {
-    location.href = '/login';
+    if (typeof location !== 'undefined') {
+      rememberPage(location.hash);
+      if (!location.pathname.startsWith('/login')) location.href = '/login';
+    }
     throw new ApiError('Sesi berakhir. Silakan masuk kembali.', { status: 401 });
   }
   let data = null;

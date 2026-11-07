@@ -305,10 +305,10 @@ test('dispatcher: urutan alfabet, _legacy terakhir, file "_" lain dilewati, modu
   assert.equal(hit, 'zeta.js');
   assert.deepEqual(ctx.calls, ['alpha', 'mid', 'zeta']);
 
-  // dispatcher asli memuat modul A3 dan _legacy
   const real = await R.loadModules([path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'api')]);
-  assert.equal(real.at(-1).name, '_legacy.js');
+  assert.equal(real.some((m) => m.name === '_legacy.js'), false);
   assert.ok(real.some((m) => m.name === 'auth.js'));
+  assert.ok(real.some((m) => m.name === 'wa.js'));
 });
 
 test('route: agent ditolak 403 oleh dispatcher walau tidak ada modul yang menangani', async () => {

@@ -16,8 +16,9 @@ const { hashPassword, verifyPassword } = await import('../src/auth.js');
 // Folder pasang tiruan: isinya tautan ke public/ dan config/ (kode tetap di ROOT), tempat .env dan data/ dibuat.
 function installDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amnan-laptop-'));
-  fs.symlinkSync(path.join(ROOT, 'public'), path.join(dir, 'public'), 'dir');
-  fs.symlinkSync(path.join(ROOT, 'config'), path.join(dir, 'config'), 'dir');
+  const kind = process.platform === 'win32' ? 'junction' : 'dir';
+  fs.symlinkSync(path.join(ROOT, 'public'), path.join(dir, 'public'), kind);
+  fs.symlinkSync(path.join(ROOT, 'config'), path.join(dir, 'config'), kind);
   return dir;
 }
 const freePort = () => new Promise((resolve) => { const s = net.createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => resolve(port)); }); });

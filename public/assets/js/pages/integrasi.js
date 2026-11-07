@@ -29,7 +29,7 @@ async function render() {
   <div class="max-w-2xl mx-auto space-y-6">
     <section class="card space-y-4" aria-labelledby="i-title">
       <div><h2 id="i-title" class="font-bold text-lg text-gray-900">Hubungkan Booking Live</h2>
-        <p class="text-sm text-gray-600">Buat satu kode sambungan di sini, lalu tempel di menu <b>WhatsApp</b> pada Booking Live (di panel kiri). Tidak perlu mengisi berkas <code>.env</code>.</p></div>
+        <p class="text-sm text-gray-600">Buat satu kode sambungan di sini, lalu tempel di menu <b>WhatsApp</b> pada Booking Live (di panel kiri). Tidak perlu mengisi berkas <code>.env</code>. Kabar ke aplikasi (lead, pesan masuk, status WhatsApp) dikirim sebagai webhook bertanda tangan dari halaman ini. Telegram untuk operator ada di Pengaturan.</p></div>
 
       ${connected ? `<dl class="text-sm grid grid-cols-[auto,1fr] gap-x-4 gap-y-1">
           <dt class="text-gray-600">Status</dt><dd class="font-medium text-green-700">Tersambung</dd>

@@ -7,14 +7,15 @@ export function makeHandle({ wa, logout, unread }) {
   return async function handle(req, res, url, ctx) {
     const p = url.pathname;
     if (req.method === 'GET' && p === '/api/wa/status') {
+      const off = process.env.DISABLE_WA === '1';
       ctx.sendJSON(res, 200, {
-        status: wa.status,
-        qr: ctx.user?.role === 'admin' ? wa.qr : null, // QR hanya untuk admin
-        number: wa.number,
-        error: wa.error,
+        status: off ? 'disabled' : wa.status,
+        qr: !off && ctx.user?.role === 'admin' ? wa.qr : null, // QR hanya untuk admin, dan hanya bila soket hidup
+        number: off ? null : wa.number,
+        error: off ? null : wa.error,
         unread: unread(),
-        since: wa.since,
-        reconnectAttempts: wa.reconnectAttempts,
+        since: off ? null : wa.since,
+        reconnectAttempts: off ? 0 : wa.reconnectAttempts,
       });
       return true;
     }

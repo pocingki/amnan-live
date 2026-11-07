@@ -57,23 +57,28 @@ export function createWhatsApp(deps = {}) {
     });
 
   const sendText = (jid, text) => sender.sendText(jid, text);
+  const inflight = new Set(); // id yang sedang diproses; gagal tidak masuk seen supaya bisa dicoba lagi
 
   async function handleMessage(raw) {
+    let waId = null;
+    let held = false; // hanya pemilik slot inflight yang boleh melepasnya
+    let commit = false; // true = sengaja selesai (tersimpan atau memang diabaikan); gagal proses tidak menandai seen
     try {
       const key = raw?.key || {};
       const rjid = key.remoteJid || '';
       if (!rjid || IGNORED_JID.test(rjid)) return; // grup, broadcast, status, newsletter
-      const waId = key.id || null;
+      waId = key.id || null;
       const fromMe = !!key.fromMe;
       if (fromMe && waId && sender.wasSentBySystem(waId)) return; // gema pesan sistem
       if (waId) {
-        if (convs.seenMessage(waId)) return;
-        convs.markSeen(waId);
+        if (convs.seenMessage(waId) || inflight.has(waId)) return;
+        inflight.add(waId);
+        held = true;
       }
 
       const ext = extractMessage(raw);
-      if (!ext) return;
-      if (fromMe && (ext.kind === 'reaction' || ext.kind === 'system')) return;
+      if (!ext) { commit = true; return; }
+      if (fromMe && (ext.kind === 'reaction' || ext.kind === 'system')) { commit = true; return; }
 
       const id = await resolveIdentity(
         { remoteJid: key.remoteJid, remoteJidAlt: key.remoteJidAlt, participant: key.participant, participantAlt: key.participantAlt },
@@ -94,7 +99,7 @@ export function createWhatsApp(deps = {}) {
         }
       }
 
-      if (ext.kind === 'text' && !String(ext.text || '').trim()) return;
+      if (ext.kind === 'text' && !String(ext.text || '').trim()) { commit = true; return; }
 
       const envelope = {
         waId,
@@ -112,9 +117,15 @@ export function createWhatsApp(deps = {}) {
         fromPhone: fromMe,
         source: { platform: '', adId: '', ctwaClid: '', sourceUrl: '', referralCode: '', ...(ext.source || {}) },
       };
-      await Promise.resolve(handleIncoming(envelope, sendText)).catch((e) => console.error('[bot]', e));
+      await Promise.resolve(handleIncoming(envelope, sendText));
+      commit = true;
     } catch (err) {
       console.error('[wa] gagal memproses pesan:', err);
+    } finally {
+      if (held) {
+        if (commit) convs.markSeen(waId);
+        inflight.delete(waId);
+      }
     }
   }
 

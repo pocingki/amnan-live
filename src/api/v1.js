@@ -214,6 +214,9 @@ export async function handle(req, res, url, ctx) {
   }
   let idemKey;
   try { idemKey = connect.idemKeyFrom(req, body); } catch (e) { return send(err(400, 'VALIDATION', e.message)); }
+  if (m === 'POST' && (p === '/api/v1/messages' || p === '/api/v1/events') && !idemKey) {
+    return send(err(400, 'VALIDATION', 'Idempotency-Key wajib untuk permintaan ini (8-120 karakter)'));
+  }
 
   const run = async () => {
     if (cm) return putContact(ctx, cm[1], body);

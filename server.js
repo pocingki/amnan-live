@@ -34,6 +34,8 @@ const brand = await import('./src/brand.js');
 const connect = await import('./src/connect.js');
 
 const PORT = Number(process.env.PORT) || 8080;
+// Bawaan hanya loopback. 0.0.0.0 hanya bila disetel (kontainer; port host tetap diikat proxy).
+const BIND_HOST = String(process.env.BIND_HOST ?? '127.0.0.1').trim() || '127.0.0.1';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 
 let VERSION = 'unknown';
@@ -75,6 +77,10 @@ if (process.env.DISABLE_WA !== '1') {
 }
 
 await initRoutes();
+
+const envFile = process.env.ENV_FILE ? path.resolve(process.env.ENV_FILE) : path.join(ROOT, '.env');
+const { lockdownSensitive } = await import('./src/lockdown.js');
+await lockdownSensitive({ dataDir: process.env.DATA_DIR, envFile });
 
 // ---------------------------------------------------------------- Helper HTTP
 
@@ -357,8 +363,9 @@ process.on('unhandledRejection', (err) => {
 
 setInterval(() => auth.cleanupSessions(), 10 * 60_000).unref();
 
-server.listen(PORT, () => {
-  console.log(`Dashboard jalan di http://localhost:${PORT}${process.env.CLIENT_ID ? ` (client: ${process.env.CLIENT_ID})` : ''}`);
+server.listen(PORT, BIND_HOST, () => {
+  const shown = BIND_HOST === '0.0.0.0' || BIND_HOST === '::' ? '127.0.0.1' : BIND_HOST;
+  console.log(`Dashboard jalan di http://${shown}:${PORT}${process.env.CLIENT_ID ? ` (client: ${process.env.CLIENT_ID})` : ''} (mendengarkan ${BIND_HOST})`);
   waMod?.start?.().catch(console.error);
   connect.start();
 });

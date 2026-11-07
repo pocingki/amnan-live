@@ -39,12 +39,13 @@ test('login salah ditolak, login benar memberi cookie sesi HttpOnly', async () =
   assert.match(sc, /SameSite=(Lax|Strict)/i);
 });
 
-test('[butuh A3] login memberi cookie csrf non-HttpOnly (K2)', async () => {
+test('[butuh A3] login memberi cookie csrf HttpOnly (K2)', async () => {
   const c = new Client(srv.base);
   const r = await c.login();
   const line = (r.headers.getSetCookie?.() || []).find((l) => l.startsWith('csrf='));
   assert.ok(line, 'cookie csrf tidak ada');
-  assert.doesNotMatch(line, /HttpOnly/i);
+  assert.match(line, /HttpOnly/i);
+  assert.match(line, /SameSite=(Lax|Strict)/i);
 });
 
 test('[butuh A3] GET /api/me -> {user, role, csrfToken} dan csrfToken = cookie csrf (K2)', async () => {

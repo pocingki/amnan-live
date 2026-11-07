@@ -474,11 +474,11 @@ export function sessionCookies(req, token, csrf) {
   const age = Math.floor(SESSION_MS / 1000);
   return [
     `session=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${secure}`,
-    `csrf=${csrf}; SameSite=Lax; Path=/; Max-Age=${age}${secure}`,
+    `csrf=${csrf}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${secure}`,
   ];
 }
 
-export const clearCookies = () => ['session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0', 'csrf=; SameSite=Lax; Path=/; Max-Age=0'];
+export const clearCookies = () => ['session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0', 'csrf=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0'];
 
 // ---------------------------------------------------------------- Audit log (JSONL harian)
 

@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 const lib = await import('../public/assets/js/lib.js');
+const platform = await import('../public/assets/js/platform.js');
 const percakapan = await import('../public/assets/js/pages/percakapan.js');
 const pesan = await import('../public/assets/js/pages/pesan.js');
 const pengaturan = await import('../public/assets/js/pages/pengaturan.js');
@@ -13,6 +14,31 @@ const ts = new Date('2026-10-31T10:05:00').getTime();
 test('esc melepas karakter HTML', () => {
   assert.equal(lib.esc('<a href="x">\'&'), '&lt;a href=&quot;x&quot;&gt;&#39;&amp;');
   assert.equal(lib.esc(null), '');
+});
+
+test('detectOs: iPhone, iPad, Android, dan desktop', () => {
+  assert.equal(platform.detectOs('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', 'iPhone', 5), 'ios');
+  assert.equal(platform.detectOs('Mozilla/5.0 (Macintosh; Intel Mac OS X)', 'MacIntel', 5), 'ios');
+  assert.equal(platform.detectOs('Mozilla/5.0 (Linux; Android 14)', 'Linux armv8l', 5), 'android');
+  assert.equal(platform.detectOs('Mozilla/5.0 (Windows NT 10.0)', 'Win32', 0), 'other');
+});
+
+test('waStatusView: nonaktif bukan terputus', () => {
+  assert.equal(lib.waStatusView('disabled').long, 'WA Nonaktif');
+  assert.equal(lib.waStatusView('disconnected').long, 'WA Terputus');
+  assert.equal(lib.waStatusView('disabled').label, 'NONAKTIF');
+  assert.equal(lib.waStatusView('entah').long, 'WA Tidak tersedia');
+});
+
+test('halaman tersimpan: refresh kembali ke rute yang sama, selain itu diabaikan', () => {
+  const mem = new Map();
+  const box = { setItem: (k, v) => mem.set(k, v), getItem: (k) => mem.get(k) ?? null };
+  assert.equal(lib.rememberPage('#/pengaturan', box), '#/pengaturan');
+  assert.equal(lib.savedPage(box), '#/pengaturan');
+  assert.equal(lib.rememberPage('#/tidak-ada', box), '');
+  assert.equal(lib.savedPage(box), '#/pengaturan');
+  assert.equal(lib.rememberPage('#/percakapan?x=1', box), '#/percakapan');
+  assert.equal(lib.pageFromHash(''), '');
 });
 
 test('readCookie + friendlyMessage', () => {
@@ -240,7 +266,8 @@ test('pengaturan: buildSettingsPatch validasi', () => {
   assert.equal(r.patch.notify.attentionMinutes, 15);
   assert.equal(r.patch.notify.x, 1); // field notify lain dipertahankan
   const bad = pengaturan.buildSettingsPatch({ ...ok, staleMinutes: '0', sendRateLimitPerMinute: 'abc', webhookUrl: 'ftp://x', telegramBotToken: 't' });
-  assert.deepEqual(bad.errors.map((e) => e.field).sort(), ['sendRateLimitPerMinute', 'staleMinutes', 'telegramChatId', 'webhookUrl']);
+  assert.deepEqual(bad.errors.map((e) => e.field).sort(), ['sendRateLimitPerMinute', 'staleMinutes', 'telegramChatId']);
+  assert.equal(bad.patch.notify.webhookUrl, undefined);
 });
 
 test('tester: mergeChips, diffTesterView, attentionOf', () => {

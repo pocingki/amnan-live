@@ -1,18 +1,12 @@
 // Pengaturan: bot, serah-terima, ketahanan, retensi, notifikasi + koneksi WhatsApp (QR).
 import { checkBase, normalizeHex, paletteFrom, DEFAULT_PALETTE } from '../brand-color.js';
 import {
-  $, api, send, esc, icon, field, INP, BTN_DARK, BTN_LIGHT, toast, poll, onEvent, confirmDialog, getMe, isAdminRole,
+  $, api, send, esc, icon, field, INP, BTN_DARK, BTN_LIGHT, toast, poll, onEvent, confirmDialog, getMe, isAdminRole, waStatusView,
   loadSettings, getSettings, saveSettings, onSettingsChange, openSettingsHistory,
 } from '../lib.js';
 
 let stopPoll = null, off = null, offEv = null, lastQr = null, canEdit = true, root, brandInfo = null;
 
-const BADGE = {
-  connected: ['TERHUBUNG', 'text-green-800', 'ok'],
-  qr: ['MENUNGGU SCAN QR', 'text-amber-800', 'qr'],
-  connecting: ['MENGHUBUNGKAN', 'text-amber-800', 'refresh'],
-  disconnected: ['TERPUTUS', 'text-red-800', 'x-circle'],
-};
 const VARS = 'Variabel: {nama} {bot} {admin}';
 
 const RANGES = [
@@ -44,8 +38,7 @@ export function buildSettingsPatch(v, cur = {}) {
   };
   for (const [k, l, a, b] of RANGES) num(k, l, a, b);
   const n = { ...(cur.notify || {}) };
-  for (const k of ['webhookUrl', 'telegramBotToken', 'telegramChatId']) n[k] = String(v[k] ?? '').trim();
-  if (n.webhookUrl && !/^https?:\/\/\S+$/i.test(n.webhookUrl)) errors.push({ field: 'webhookUrl', msg: 'Webhook URL harus diawali http:// atau https://.' });
+  for (const k of ['telegramBotToken', 'telegramChatId']) n[k] = String(v[k] ?? '').trim();
   if ((n.telegramBotToken && !n.telegramChatId) || (!n.telegramBotToken && n.telegramChatId)) errors.push({ field: 'telegramChatId', msg: 'Telegram butuh token bot DAN chat ID, atau kosongkan keduanya.' });
   n.onHot = v.onHot === 'on';
   n.onDisconnected = v.onDisconnected === 'on';
@@ -191,8 +184,8 @@ function render() {
         ${num('retentionDays', 'Hapus percakapan lama setelah (hari)', '0 = dimatikan (data disimpan selamanya). Bila diisi, percakapan yang lebih lama akan dihapus PERMANEN secara berkala.', 0, 3650)}
       </fieldset>
 
-      <fieldset class="space-y-4 border-t border-gray-100 pt-4"><legend class="font-semibold text-brand-800 mb-2">Notifikasi ke luar dashboard</legend>
-        ${field('Webhook URL', `<input name="webhookUrl" type="url" inputmode="url" class="${INP}" value="${esc(N.webhookUrl || '')}" placeholder="https://..." ${dis}>`, 'Dipanggil saat ada kejadian penting. Kosongkan untuk mematikan.')}
+      <fieldset class="space-y-4 border-t border-gray-100 pt-4"><legend class="font-semibold text-brand-800 mb-2">Notifikasi operator (Telegram)</legend>
+        <p class="text-sm text-gray-600">Kabar lead hot, WhatsApp putus, dan percakapan yang perlu perhatian dikirim ke Telegram. Nama dan nomor tersamar, isi pesan tidak ikut. Webhook bertanda tangan ke aplikasi lain diatur di menu Integrasi, bukan di sini.</p>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           ${field('Token bot Telegram', `<input name="telegramBotToken" type="password" autocomplete="off" class="${INP}" value="${esc(N.telegramBotToken || '')}" ${dis}>`, 'Rahasia: jangan dibagikan.')}
           ${field('Chat ID Telegram', `<input name="telegramChatId" autocomplete="off" class="${INP}" value="${esc(N.telegramChatId || '')}" ${dis}>`)}
@@ -256,9 +249,9 @@ async function pollWA() {
   let s;
   try { s = await api('/api/wa/status'); } catch { return; }
   if (!$('#w-label')) return;
-  const [label, cls, ic] = BADGE[s.status] || BADGE.disconnected;
-  $('#w-label').innerHTML = `${icon(ic)} ${label}`;
-  $('#w-label').className = 'font-bold inline-flex items-center gap-1 ' + cls;
+  const b = waStatusView(s.status);
+  $('#w-label').innerHTML = `${icon(b.icon)} ${b.label}`;
+  $('#w-label').className = 'font-bold inline-flex items-center gap-1 ' + b.tone;
   $('#w-number').hidden = !s.number;
   $('#w-number').textContent = s.number ? 'Nomor terhubung: +' + s.number : '';
   $('#w-error').hidden = !s.error;

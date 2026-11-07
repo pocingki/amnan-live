@@ -7,12 +7,18 @@ import { verifySignature } from '../src/connect.js';
 
 let srv, admin, receiver, received, rxPort;
 
-const v1 = (token, method, path, body, headers = {}) =>
-  fetch(srv.base + path, {
+let idemN = 0;
+const v1 = (token, method, path, body, headers = {}, { idem = true } = {}) => {
+  const extra = { ...headers };
+  if (idem && method === 'POST' && (path === '/api/v1/messages' || path === '/api/v1/events') && !extra['idempotency-key']) {
+    extra['idempotency-key'] = `uji-${String(++idemN).padStart(8, '0')}-kunci`;
+  }
+  return fetch(srv.base + path, {
     method,
-    headers: { authorization: `Bearer ${token}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...headers },
+    headers: { authorization: `Bearer ${token}`, ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...extra },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }).then(async (r) => ({ status: r.status, headers: r.headers, json: await r.json().catch(() => null) }));
+};
 
 async function newKey(scopes, extra = {}) {
   const r = await admin.post('/api/integrations/keys', { name: 'Booking Live', app: 'booking', scopes, ...extra });
@@ -164,6 +170,9 @@ test('pesan: dry-run tercatat di percakapan, idempotensi tidak menggandakan, dan
   assert.equal(bots[0].text, 'Booking Anda dikonfirmasi.');
   assert.equal(conv.name, 'Rina');
 
+  const missing = await v1(token, 'POST', '/api/v1/messages', { phone, text: 'tanpa-kunci' }, {}, { idem: false });
+  assert.equal(missing.status, 400);
+  assert.match(missing.json.error, /Idempotency-Key wajib/);
   assert.equal((await v1(token, 'POST', '/api/v1/messages', { phone: '12', text: 'x' })).status, 400);
   assert.equal((await v1(token, 'POST', '/api/v1/messages', { phone, text: '   ' })).status, 400);
   assert.equal((await v1(token, 'POST', '/api/v1/messages', { phone, text: 'x'.repeat(4001) })).status, 400);

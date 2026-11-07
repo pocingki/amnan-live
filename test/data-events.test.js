@@ -106,6 +106,16 @@ test('backup: berkas harian, tidak menimpa, lewati bila kosong, rotasi 14 hari, 
   const f1 = D.backupNow();
   assert.ok(f1 && /amnan-\d{4}-\d{2}-\d{2}\.db$/.test(f1));
   assert.equal(D.backupNow(), null, 'sekali per hari');
+  const dataRoot = process.env.DATA_DIR;
+  fs.mkdirSync(path.join(dataRoot, 'auth'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'auth', 'creds.json'), '{"session":"uji"}');
+  fs.writeFileSync(path.join(dataRoot, 'connect-keys.json'), '{"keys":[]}');
+  const snap = D.backupDataSnapshot({ dbFile: f1 });
+  assert.ok(snap && fs.existsSync(path.join(snap, 'amnan.db')));
+  assert.equal(fs.readFileSync(path.join(snap, 'auth', 'creds.json'), 'utf8'), '{"session":"uji"}');
+  assert.ok(fs.existsSync(path.join(snap, 'connect-keys.json')));
+  assert.equal(fs.existsSync(path.join(snap, 'backups')), false);
+  assert.equal(D.backupDataSnapshot({ dbFile: f1 }), null, 'cuplikan data sekali per hari');
 
   const dir = path.dirname(f1);
   const old = path.join(dir, 'amnan-2020-01-01.db');
@@ -140,27 +150,27 @@ function setupNotifier(notify) {
 }
 const tick = () => new Promise((r) => setImmediate(r));
 
-test('notifier: lead:hot -> webhook + Telegram, nama/nomor tersamar, tanpa isi pesan', async () => {
+test('notifier: lead:hot -> Telegram saja, nama/nomor tersamar, tanpa isi pesan', async () => {
   process.env.PUBLIC_URL = 'https://crm.contoh.id/';
   const calls = setupNotifier({ webhookUrl: 'https://hook.contoh.id/x', telegramBotToken: '123:ABC', telegramChatId: '-100', onHot: true });
   const { conv } = C.getOrCreate('6281234567890', 'j', 'Budi Santoso');
   C.addMessage(conv, 'customer', 'ISI-PESAN-RAHASIA', Date.now());
   E.emit('lead:hot', { phone: '6281234567890', name: 'Budi Santoso' });
   await tick(); await tick();
-  assert.equal(calls.length, 2);
-  const wh = calls.find((c) => c.url.startsWith('https://hook'));
-  const tg = calls.find((c) => c.url.startsWith('https://api.telegram.org/bot123:ABC/sendMessage'));
-  assert.ok(wh && tg);
+  assert.equal(calls.length, 1);
+  const tg = calls[0];
+  assert.ok(tg.url.startsWith('https://api.telegram.org/bot123:ABC/sendMessage'));
+  assert.ok(!calls.some((c) => c.url.startsWith('https://hook')), 'webhook pengaturan tidak dipanggil');
   const all = JSON.stringify(calls.map((c) => c.body));
   assert.ok(!all.includes('ISI-PESAN-RAHASIA'), 'isi pesan tidak dikirim');
   assert.ok(!all.includes('6281234567890'), 'nomor utuh tidak dikirim');
   assert.ok(!all.includes('Santoso'), 'nama belakang tidak dikirim');
   assert.match(tg.body.text, /Budi S\. \(6281\*\*\*\*890\)/);
   assert.match(tg.body.text, /https:\/\/crm\.contoh\.id\/#\/crm/);
-  assert.ok(wh.opts.signal, 'ada signal timeout');
+  assert.ok(tg.opts.signal, 'ada signal timeout');
   E.emit('lead:hot', { phone: '6281234567890', name: 'Budi Santoso' }); // duplikat dalam 10 menit
   await tick();
-  assert.equal(calls.length, 2, 'dedupe');
+  assert.equal(calls.length, 1, 'dedupe');
   N.stop();
   D.closeAll();
 });
@@ -194,7 +204,7 @@ test('notifier: onHot mati -> tidak mengirim; fetch error/timeout tidak melempar
 });
 
 test('notifier: WA terputus > menit tertentu, tersambung kembali membatalkan', async () => {
-  const calls = setupNotifier({ webhookUrl: 'https://hook.contoh.id/x', onDisconnected: 3 });
+  const calls = setupNotifier({ telegramBotToken: '123:ABC', telegramChatId: '-100', webhookUrl: 'https://hook.contoh.id/x', onDisconnected: 3 });
   mock.timers.enable({ apis: ['setTimeout'] });
   try {
     E.emit('wa:status', { status: 'disconnected', number: '6281234567890' });
@@ -210,8 +220,8 @@ test('notifier: WA terputus > menit tertentu, tersambung kembali membatalkan', a
     mock.timers.tick(3 * 60000 + 10);
     await tick(); await tick();
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].body.event, 'wa:down');
-    assert.match(calls[0].body.title, /3 menit/);
+    assert.match(calls[0].body.text, /3 menit/);
+    assert.ok(calls[0].url.includes('api.telegram.org'));
   } finally {
     mock.timers.reset();
   }
@@ -220,7 +230,7 @@ test('notifier: WA terputus > menit tertentu, tersambung kembali membatalkan', a
 });
 
 test('notifier: percakapan needsAttention belum dibalas > attentionMinutes; sudah dibalas -> diam', async () => {
-  const calls = setupNotifier({ webhookUrl: 'https://hook.contoh.id/x', attentionMinutes: 10 });
+  const calls = setupNotifier({ telegramBotToken: '123:ABC', telegramChatId: '-100', webhookUrl: 'https://hook.contoh.id/x', attentionMinutes: 10 });
   const a = C.getOrCreate('62811110000', 'j', 'Ani Lestari').conv;
   C.addMessage(a, 'customer', 'RAHASIA-A', Date.now());
   a.needsAttention = true; a.attentionAt = Date.now();
@@ -239,8 +249,8 @@ test('notifier: percakapan needsAttention belum dibalas > attentionMinutes; suda
     mock.timers.reset();
   }
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].body.event, 'attention');
-  const all = JSON.stringify(calls[0].body);
+  assert.ok(calls[0].url.includes('api.telegram.org'));
+  const all = calls[0].body.text;
   assert.match(all, /Ani L\./);
   assert.ok(!all.includes('RAHASIA') && !all.includes('62811110000'));
   N.stop();

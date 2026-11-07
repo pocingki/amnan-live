@@ -182,7 +182,7 @@ test('login form: cookie sesi HttpOnly + cookie csrf; /api/me sesuai K2', async 
   const csrf = raw.find((c) => c.startsWith('csrf='));
   assert.match(sess, /HttpOnly/);
   assert.match(sess, /SameSite=Lax/);
-  assert.ok(!/HttpOnly/i.test(csrf), 'cookie csrf harus bisa dibaca JS');
+  assert.match(csrf, /HttpOnly/i);
   assert.equal(s.res.headers.get('location'), '/');
 
   const me = await call(M, '/api/me', { cookie: s.cookie });

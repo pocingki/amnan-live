@@ -82,7 +82,7 @@ Kirim teks WhatsApp transaksional.
 - Mode uji: `CONNECT_DRY_RUN=1` mencatat pesan tanpa mengirim (`dryRun:true`) untuk pengembangan dan CI.
 
 ### Idempotensi
-Semua `POST`/`PUT` menerima header `Idempotency-Key` (8-120 karakter). Permintaan ulang dengan kunci yang sama dari aplikasi yang sama dalam 24 jam mengembalikan respons semula dengan header `Idempotent-Replay: true` dan **tidak mengulang efek** (pesan tidak terkirim dua kali). Aplikasi wajib memakainya untuk `messages` dan `events`.
+`POST /api/v1/messages` dan `POST /api/v1/events` menolak permintaan tanpa header `Idempotency-Key` (8-120 karakter). `PUT` kontak menerima kunci yang sama, tetapi tidak mewajibkannya. Permintaan ulang dengan kunci yang sama dari aplikasi yang sama dalam 24 jam mengembalikan respons semula dengan header `Idempotent-Replay: true` dan **tidak mengulang efek** (pesan tidak terkirim dua kali). Reservasi kunci ditulis ke disk sebelum efek dijalankan. Proses yang mati di tengah membalas `409 IN_PROGRESS` pada ulang kunci yang sama, bukan mengirim pesan kedua.
 
 ## 3. Webhook keluar (Amnan -> aplikasi)
 

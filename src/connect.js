@@ -152,12 +152,6 @@ const idemMap = () => {
   }
   return idem;
 };
-let idemTimer = null;
-const persistIdem = () => {
-  if (idemTimer) return;
-  idemTimer = setTimeout(() => { idemTimer = null; flushIdem(); }, 200);
-  idemTimer.unref?.();
-};
 function flushIdem() {
   if (!idem) return;
   const t = Date.now();
@@ -172,27 +166,45 @@ export const idemKeyFrom = (req, body) => {
   return k;
 };
 
-/** Jalankan fn sekali per (kunci, idempotencyKey). fn -> { status, body }. Hanya respons 2xx/4xx tetap yang disimpan. */
+const idemLive = (row) => row && Date.now() - row.ts <= IDEM_TTL_MS;
+
+/** Jalankan fn sekali per (kunci, idempotencyKey). fn -> { status, body }.
+ *  Reservasi ditulis ke disk sebelum efek, jadi proses yang mati di tengah tidak mengirim ulang.
+ *  Hanya respons 2xx/4xx tetap yang disimpan. 429, 503, dan 5xx boleh dicoba lagi. */
 export async function withIdempotency(keyId, idemKey, fn) {
   if (!idemKey) return { ...(await fn()), replay: false };
   const k = `${keyId}:${idemKey}`;
   const hit = idemMap().get(k);
-  if (hit && Date.now() - hit.ts <= IDEM_TTL_MS) return { status: hit.status, body: hit.body, replay: true };
+  if (idemLive(hit) && !hit.pending) return { status: hit.status, body: hit.body, replay: true };
   if (inflight.has(k)) {
     const r = await inflight.get(k);
     return { ...r, replay: true };
   }
-  const p = (async () => {
-    const r = await fn();
-    if (r.status < 500 && r.status !== 429 && r.status !== 503) {
-      idemMap().set(k, { ts: Date.now(), status: r.status, body: r.body });
-      persistIdem();
-    }
-    return r;
-  })();
-  inflight.set(k, p);
+  if (idemLive(hit) && hit.pending) return { status: hit.status, body: hit.body, replay: true };
+
+  let finish;
+  const gate = new Promise((resolve, reject) => { finish = { resolve, reject }; });
+  gate.catch(() => {}); // penolakan tetap sampai ke pemanggil yang menunggu; tanpa ini proses melihat unhandledRejection
+  inflight.set(k, gate);
+  idemMap().set(k, {
+    ts: Date.now(),
+    pending: true,
+    status: 409,
+    body: { error: 'Permintaan dengan Idempotency-Key ini belum selesai. Ulangi kunci yang sama, jangan buat kunci baru.', code: 'IN_PROGRESS' },
+  });
+  flushIdem();
   try {
-    return { ...(await p), replay: false };
+    const r = await fn();
+    if (r.status < 500 && r.status !== 429 && r.status !== 503) idemMap().set(k, { ts: Date.now(), status: r.status, body: r.body });
+    else idemMap().delete(k);
+    flushIdem();
+    finish.resolve(r);
+    return { ...r, replay: false };
+  } catch (e) {
+    idemMap().delete(k);
+    flushIdem();
+    finish.reject(e);
+    throw e;
   } finally {
     inflight.delete(k);
   }
@@ -565,7 +577,6 @@ export function stop() {
 /** Tulis sinkron semua yang tertunda (shutdown). */
 export function flush() {
   clearTimeout(outTimer); outTimer = null;
-  clearTimeout(idemTimer); idemTimer = null;
   flushOutbox();
   flushIdem();
 }

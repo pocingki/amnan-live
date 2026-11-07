@@ -296,6 +296,7 @@ export function retireLegacy(file) {
 
 // ---------- cadangan ----------
 const BK_RE = /^amnan-(\d{4}-\d{2}-\d{2})(-\d{6})?\.db$/;
+const SNAP_RE = /^data-(\d{4}-\d{2}-\d{2})(-\d{6})?$/;
 
 function tzNow(d = new Date()) {
   const tz = process.env.TZ || 'Asia/Jakarta';
@@ -349,9 +350,71 @@ export function backupNow({ force = false } = {}) {
   return dest;
 }
 
+function secureTree(dir) {
+  const walk = (d) => {
+    let st;
+    try { st = fs.statSync(d); } catch { return; }
+    if (st.isDirectory()) {
+      try { fs.chmodSync(d, 0o700); } catch { /* sistem berkas tanpa chmod */ }
+      for (const name of fs.readdirSync(d)) walk(path.join(d, name));
+    } else {
+      secureFile(d);
+    }
+  };
+  walk(dir);
+}
+
+function listSnapshots(dir = st().dir) {
+  const bdir = path.join(dir, 'backups');
+  if (!fs.existsSync(bdir)) return [];
+  return fs.readdirSync(bdir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && SNAP_RE.test(e.name))
+    .map((e) => {
+      const p = path.join(bdir, e.name);
+      return { name: e.name, path: p, mtime: fs.statSync(p).mtimeMs, day: e.name.match(SNAP_RE)[1] };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+}
+
+function rotateSnapshots() {
+  const all = listSnapshots();
+  const cut = tzNow(new Date(Date.now() - BACKUP_KEEP_DAYS * 86400000)).day;
+  for (const b of all.slice(1)) {
+    if (b.day <= cut) fs.rmSync(b.path, { recursive: true, force: true });
+  }
+}
+
+/** Salin DATA_DIR (sesi WhatsApp, kunci integrasi, pengguna, pengaturan) plus berkas database yang sudah konsisten.
+ *  Folder backups tidak disalin ke dalam dirinya. DATA_KEY tidak ikut; simpan terpisah. */
+export function backupDataSnapshot({ force = false, dbFile = null } = {}) {
+  const s = st();
+  if (!s.writable) return null;
+  const { day, time } = tzNow();
+  const bdir = ensureDir(path.join(s.dir, 'backups'));
+  const dest = path.join(bdir, force ? `data-${day}-${time}` : `data-${day}`);
+  if (!force && fs.existsSync(dest)) return null;
+  fs.rmSync(dest, { recursive: true, force: true });
+  fs.mkdirSync(dest, { recursive: true, mode: 0o700 });
+  for (const ent of fs.readdirSync(s.dir, { withFileTypes: true })) {
+    if (ent.name === 'backups') continue;
+    if (ent.name === 'amnan.db' || ent.name.startsWith('amnan.db-')) continue;
+    fs.cpSync(path.join(s.dir, ent.name), path.join(dest, ent.name), { recursive: true });
+  }
+  if (dbFile && fs.existsSync(dbFile)) fs.copyFileSync(dbFile, path.join(dest, 'amnan.db'));
+  secureTree(dest);
+  rotateSnapshots();
+  console.log(`[db] cadangan data dibuat: ${path.basename(dest)} (DATA_KEY tidak ikut; simpan terpisah)`);
+  return dest;
+}
+
 function scheduleBackups() {
   if (process.env.AMNAN_NO_BACKUP === '1') return;
-  const run = () => { try { backupNow(); } catch (e) { console.error('[db] cadangan harian gagal:', e.message); } };
+  const run = () => {
+    try {
+      const dbFile = backupNow();
+      backupDataSnapshot({ dbFile });
+    } catch (e) { console.error('[db] cadangan harian gagal:', e.message); }
+  };
   const t1 = setTimeout(run, 5000);
   const t2 = setInterval(run, 3600 * 1000);
   t1.unref?.(); t2.unref?.();

@@ -1,8 +1,9 @@
 // Router halaman + status WhatsApp + notifikasi + menu akun di header.
+import './platform.js';
 import {
-  $, api, esc, icon, getMe, ROLE_LABEL, csrfToken, onEvent, notify, debounce, toast, popMenu,
+  $, api, esc, icon, getMe, ROLE_LABEL, csrfToken, onEvent, notify, debounce, toast, popMenu, waStatusView,
   loadSettings, getSettings, setBaseTitle, setUnreadTotal, getActiveChat, unlockAudio, soundOn, setSound,
-  notificationState, requestNotifications,
+  notificationState, requestNotifications, rememberPage, savedPage,
 } from './lib.js';
 
 const ROUTES = {
@@ -24,7 +25,10 @@ const updateTitle = () => setBaseTitle(`${pageTitle ? pageTitle + ' - ' : ''}${b
 // ---------- router ----------
 async function go() {
   const raw = location.hash.slice(1).split('?')[0];
-  if (raw === '' || raw === '/') { location.replace('#/crm'); return; } // memicu hashchange lagi
+  if (raw === '' || raw === '/') {
+    location.replace(savedPage() || '#/crm'); // hashchange memuat halaman yang sama dengan sebelum refresh
+    return;
+  }
   const path = ROUTES[raw] ? raw : null;
   const id = ++navId;
   document.querySelectorAll('.nav-link').forEach((a) => {
@@ -49,6 +53,7 @@ async function go() {
   }
 
   pageTitle = TITLES[path];
+  rememberPage('#' + path);
   updateTitle();
   view.setAttribute('aria-busy', 'true');
   view.innerHTML = '<p class="text-sm text-gray-600" role="status">Memuat…</p>';
@@ -74,16 +79,10 @@ async function go() {
 const announce = (t) => { $('#route-announcer').textContent = ''; setTimeout(() => ($('#route-announcer').textContent = t), 50); };
 
 // ---------- status WhatsApp (terlihat juga di HP: ikon + teks ringkas) ----------
-const BADGE = {
-  connected: { cls: 'wa-ok', icon: 'ok', long: 'WA Terhubung', short: 'Terhubung' },
-  qr: { cls: 'wa-warn', icon: 'qr', long: 'Menunggu Scan QR', short: 'Scan QR' },
-  connecting: { cls: 'wa-warn', icon: 'refresh', long: 'Menghubungkan…', short: 'Menyambung' },
-  disconnected: { cls: 'wa-bad', icon: 'x-circle', long: 'WA Terputus', short: 'Putus' },
-};
 let prevWa = null;
 
 function applyWa(status) {
-  const b = BADGE[status] || BADGE.disconnected;
+  const b = waStatusView(status);
   const el = $('#wa-badge');
   el.className = `wa-badge ${b.cls}`;
   el.setAttribute('aria-label', `Status WhatsApp: ${b.long}`);
@@ -118,8 +117,11 @@ function applyBrand() {
   if (brandColorSeen !== null && color !== brandColorSeen) refreshBrandAssets(); // warna diubah (mis. di tab lain atau dipulihkan dari riwayat)
   brandColorSeen = color;
   brand = s.brandName || brand;
+  const tagline = s.brandTagline || '';
   $('#brand-name').textContent = brand;
-  $('#brand-tagline').textContent = s.brandTagline || '';
+  $('#brand-name').title = brand;
+  $('#brand-tagline').textContent = tagline;
+  $('#brand-tagline').title = tagline;
   $('#foot-brand').textContent = brand;
   $('#brand-link').setAttribute('aria-label', `${brand}, ke halaman CRM`);
   updateTitle();

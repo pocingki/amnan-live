@@ -100,6 +100,22 @@ test('withIdempotency: efek sekali, replay, dan permintaan serentak', async () =
 
   assert.throws(() => C.idemKeyFrom({ headers: { 'idempotency-key': 'pendek' } }, {}), /8-120/);
   assert.equal(C.idemKeyFrom({ headers: {} }, {}), null);
+
+  const idemFile = path.join(dir, 'connect-idem.json');
+  let during = '';
+  await C.withIdempotency('k1', 'kunci-idem-awal', async () => {
+    during = fs.readFileSync(idemFile, 'utf8');
+    return { status: 200, body: { ok: true } };
+  });
+  assert.match(during, /kunci-idem-awal/);
+  assert.match(during, /"pending": true/);
+  const after = JSON.parse(fs.readFileSync(idemFile, 'utf8'));
+  const row = after.entries['k1:kunci-idem-awal'];
+  assert.equal(row.pending, undefined);
+  assert.equal(row.status, 200);
+  const again = await C.withIdempotency('k1', 'kunci-idem-awal', async () => ({ status: 200, body: { ok: false } }));
+  assert.equal(again.replay, true);
+  assert.equal(again.body.ok, true);
 });
 
 test('tanda tangan webhook: valid, dirusak, kedaluwarsa', () => {
